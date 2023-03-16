@@ -1,0 +1,3 @@
+max_loop_distance: 2.0 # Maximum distance between two nodes in a loop
+synthetic_graph_gen_iterations: 1000 # Number of iterations to generate a synthetic graph
+seed_graph_depth: 10 # Depth of the seed graph

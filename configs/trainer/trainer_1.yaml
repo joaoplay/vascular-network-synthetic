@@ -1,0 +1,4 @@
+lr: 0.001
+max_iters: null
+batch_size: 64
+device: cpu
