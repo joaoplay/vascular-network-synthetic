@@ -118,6 +118,9 @@ class GraphSeq2SeqTrainer:
                 # The maximum number of iterations has been reached. Stop the training.
                 break
 
+            # Increase iteration number
+            self.iter_num += 1
+
     @torch.no_grad()
     def evaluate(self):
         """

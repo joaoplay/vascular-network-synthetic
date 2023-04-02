@@ -1,6 +1,6 @@
 run_name: test_run # Name of the run. Used to create a folder to save the checkpoints and logs
 defaults:
-  - paths: paths_1
+  - paths: paths_2_2_5_10
   - trainer: trainer_1
   - evaluator: evaluator_1
   - model: model_1
@@ -8,10 +8,10 @@ num_preprocessing_iterations: 1 # Determines how many times the preprocessing is
 num_classes: 201 # Number of classes to discretize the relative coordinates. Note that 201 means that the relative
                  # coordinates are discretized into classes ranging [0, 200]
 remove_duplicates: true # If true, remove duplicate paths from the dataset
-load_preprocessed_data: true # If true, load preprocessed data from disk
+load_preprocessed_data: false # If true, load preprocessed data from disk
 eval_every_n_iters: 100 # Evaluate the model every n iterations
 save_checkpoint_every_n_iters: 100 # Save a checkpoint every n iterations
-log_loss_every_n_iters: 100 # Log the loss every n iterations
+log_loss_every_n_iters: 5 # Log the loss every n iterations
 seed: 873 # Random seed
 
 

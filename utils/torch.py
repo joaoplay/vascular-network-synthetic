@@ -13,7 +13,7 @@ def unique(x, dim=-1):
     uniq, inverse = torch.unique(x, return_inverse=True, dim=dim)
     perm = torch.arange(inverse.size(dim), dtype=inverse.dtype, device=inverse.device)
     inverse, perm = inverse.flip([dim]), perm.flip([dim])
-    return unique, inverse.new_empty(uniq.size(dim)).scatter_(dim, inverse, perm)
+    return uniq, inverse.new_empty(uniq.size(dim)).scatter_(dim, inverse, perm)
 
 
 def compute_class_weights(data_y, total_classes):
