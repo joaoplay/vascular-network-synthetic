@@ -43,6 +43,9 @@ class CategoricalCoordinatesEncoder:
         if self.scale is None or self.offset is None:
             raise ValueError('The parameters of the categorical coordinates encoder have not been computed')
 
+        # Change NaN values to 0
+        data[torch.isnan(data)] = 0
+
         # Encode the coordinates into a single integer
         categorical_data = torch.round(data * self.scale + self.offset)
         # Clamp the values to the range [0, n_categories]
