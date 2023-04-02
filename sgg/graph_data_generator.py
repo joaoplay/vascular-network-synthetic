@@ -117,6 +117,10 @@ class GraphDataGenerator:
         # from which we can infer the range of values for all the coordinates.
         input_data_flatten = input_data.flatten()
         prediction_data_flatten = prediction_data.flatten()
+
+        # Print min value in prediction_data_flatten
+        print(f'Min value in prediction_data_flatten: {prediction_data_flatten.min()}')
+
         all_data = torch.cat((input_data_flatten, prediction_data_flatten), dim=0)
         # Create and fit categorical encoder
         categorical_coordinates_encoder = CategoricalCoordinatesEncoder(n_categories=self.num_classes,
