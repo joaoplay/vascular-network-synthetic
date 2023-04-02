@@ -4,7 +4,7 @@ defaults:
   - trainer: trainer_1
   - evaluator: evaluator_1
   - model: model_1
-num_preprocessing_iterations: 1 # Determines how many times the preprocessing is run
+num_preprocessing_iterations: 100 # Determines how many times the preprocessing is run
 num_classes: 201 # Number of classes to discretize the relative coordinates. Note that 201 means that the relative
                  # coordinates are discretized into classes ranging [0, 200]
 remove_duplicates: true # If true, remove duplicate paths from the dataset
