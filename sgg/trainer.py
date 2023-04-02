@@ -100,6 +100,9 @@ class GraphSeq2SeqTrainer:
             decoder_output = self.model(x, y)
             y = y[:, -1, :, :].reshape(-1)
 
+            # Print y min and max
+            print(f"y min: {y.min()}, y max: {y.max()}")
+
             # Calculate loss
             self.last_loss_value = self.loss(decoder_output, y)
 
