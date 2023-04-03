@@ -43,15 +43,19 @@ class CategoricalCoordinatesEncoder:
         if self.scale is None or self.offset is None:
             raise ValueError('The parameters of the categorical coordinates encoder have not been computed')
 
-        # Change NaN values to 0
-        data[torch.isnan(data)] = 0
-
         # Encode the coordinates into a single integer
-        categorical_data = torch.round(data * self.scale + self.offset)
+        categorical_data = torch.round(data[~torch.isnan(data)] * self.scale + self.offset).long()
         # Clamp the values to the range [0, n_categories]
         categorical_data = torch.clamp(categorical_data, 0, self.n_categories - 1).long()
 
-        return categorical_data
+        # Create empty tensor with the same shape as data
+        encoded_data = torch.empty_like(data).long()
+
+        encoded_data[~torch.isnan(data)] = categorical_data
+        # Change NaN values to 0
+        encoded_data[torch.isnan(data)] = self.n_categories
+
+        return encoded_data
 
     def inverse_transform(self, categorical_data: torch.Tensor):
         """
@@ -88,6 +92,8 @@ class CategoricalCoordinatesEncoder:
         Load the parameters of the categorical coordinates encoder
         :return:
         """
+        print(self.encoder_path)
+
         # Check if the file exists
         if not path.exists(path.join(self.encoder_path)):
             raise FileNotFoundError('Cannot find the file with the parameters of the categorical coordinates encoder')

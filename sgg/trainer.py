@@ -1,6 +1,10 @@
-from typing import Callable, Dict
+from copy import deepcopy
+from typing import Callable, Dict, Optional
 
+import networkx as nx
+import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from networkx import Graph
 from torch import optim, nn
 from torch.utils.data import Dataset, DataLoader
@@ -8,17 +12,19 @@ from torch.utils.data import Dataset, DataLoader
 from sgg.evaluate import get_starting_map, generate_synthetic_graph, compute_graph_comparison_metrics
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
+from utils.visualize import draw_3d_graph
 
 # Macros for available callbacks
 ON_BATCH_END = 'on_batch_end'
 
 
 class GraphSeq2SeqTrainer:
-    def __init__(self, model: GraphSeq2Seq, train_dataset: Dataset, graph: Graph, max_input_paths: int,
+    def __init__(self, model: GraphSeq2Seq, train_dataset: Optional[Dataset], graph: Graph, max_input_paths: int,
                  max_paths_for_each_reachable_node: int, max_input_path_length: int, max_output_nodes: int,
                  distance_function: Callable, max_loop_distance: int, synthetic_graph_gen_iterations: int,
                  seed_graph_depth: int, categorical_coordinates_encoder: CategoricalCoordinatesEncoder,
-                 class_weights: torch.Tensor, lr: float, max_iters: int, batch_size: int, device: str):
+                 class_weights: Optional[torch.Tensor], ignore_index: Optional[int],
+                 lr: float, max_iters: int, batch_size: int, device: str):
         """
         This class offers a training loop for a Graph Sequence-to-Sequence model. It is responsible for training
         the model, while providing callbacks to perform custom actions during the training process. The metrics
@@ -59,7 +65,8 @@ class GraphSeq2SeqTrainer:
         self.decoder_optimizer = optim.Adam(self.model.decoder.parameters(), lr=lr)
         # Use CrossEntropyLoss as the loss function. When the dataset is unbalanced, the class weights are used to
         # penalize the loss function for the underrepresented classes.
-        self.loss = nn.CrossEntropyLoss(weight=class_weights.to(device=device))
+        class_weights = class_weights.to(device=device) if class_weights is not None else None
+        self.loss = nn.CrossEntropyLoss(weight=class_weights, ignore_index=ignore_index)
         self.max_iters = max_iters
         self.device = device
 
@@ -130,6 +137,13 @@ class GraphSeq2SeqTrainer:
         """
         # Get a seed from the graph and considering a maximum starting_seed_depth
         seed_graph, unvisited_nodes = get_starting_map(self.graph, depth=self.seed_graph_depth)
+
+        original_seed_graph_relabeled = nx.convert_node_labels_to_integers(deepcopy(seed_graph),
+                                                                           label_attribute='old_label')
+        unvisited_nodes_relabeled = [node_idx for node_idx, node_attr in original_seed_graph_relabeled.nodes(data=True)
+                                     if node_attr['old_label'] in unvisited_nodes]
+        seed_graph = nx.Graph(seed_graph)
+
         # Generate a synthetic graph from the previously obtained seed.
         synth_graph = generate_synthetic_graph(seed_graph=seed_graph, unvisited_nodes=unvisited_nodes,
                                                graph_seq_2_seq=self.model,
@@ -141,6 +155,15 @@ class GraphSeq2SeqTrainer:
                                                distance_function=self.distance_function,
                                                num_iterations=self.synthetic_graph_gen_iterations,
                                                max_loop_distance=self.max_loop_distance, device=self.device)
+
+        """synth_graph = nx.convert_node_labels_to_integers(synth_graph, label_attribute='old_label')
+        fig1 = draw_3d_graph(synth_graph)
+
+        seed_graph = nx.convert_node_labels_to_integers(seed_graph, label_attribute='old_label')
+        fig2 = draw_3d_graph(seed_graph)
+
+        fig1.show()
+        fig2.show()"""
 
         # Calculate metrics
         metrics = compute_graph_comparison_metrics(synth_graph, self.graph)
@@ -187,3 +210,15 @@ class GraphSeq2SeqTrainer:
             'iter_num': self.iter_num,
             'loss': self.last_loss_value
         }, checkpoint_save_path)
+
+    def load_checkpoint(self, checkpoint_path):
+        """
+        Load a checkpoint from a file.
+        """
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        self.model.encoder.load_state_dict(checkpoint['encoder'])
+        self.model.decoder.load_state_dict(checkpoint['decoder'])
+        self.encoder_optimizer.load_state_dict(checkpoint['encoder_optimizer'])
+        self.decoder_optimizer.load_state_dict(checkpoint['decoder_optimizer'])
+        self.iter_num = checkpoint['iter_num']
+        self.last_loss_value = checkpoint['loss']

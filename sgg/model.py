@@ -242,3 +242,8 @@ class GraphSeq2Seq(nn.Module):
         :return:
         """
         return self.forward(x, None)
+
+    def load(self, path):
+        """
+        Load encoder and decoder from a file
+        """

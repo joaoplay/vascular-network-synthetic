@@ -1,6 +1,6 @@
 import networkx as nx
 import numpy as np
-from pygments.lexers import go
+import plotly.graph_objects as go
 
 
 def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius=3):
@@ -53,7 +53,7 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
 
         # Create a trace for the edges
         trace_edges.append(
-            go.Scatter3d(x=x_edge, y=y_edge, z=z_edge, mode='lines', line=dict(color='rgba(255, 255, 255, 0.5)',
+            go.Scatter3d(x=x_edge, y=y_edge, z=z_edge, mode='lines', line=dict(color='rgba(0, 0, 0, 0.5)',
                                                                                width=edge_radius * 2),
                          hoverinfo='none'))
 
