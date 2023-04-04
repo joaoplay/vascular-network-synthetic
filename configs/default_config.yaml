@@ -9,9 +9,9 @@ num_classes: 201 # Number of classes to discretize the relative coordinates. Not
                  # coordinates are discretized into classes ranging [0, 200]
 remove_duplicates: true # If true, remove duplicate paths from the dataset
 load_preprocessed_data: false # If true, load preprocessed data from disk
-eval_every_n_iters: 100 # Evaluate the model every n iterations
-save_checkpoint_every_n_iters: 100 # Save a checkpoint every n iterations
-log_loss_every_n_iters: 5 # Log the loss every n iterations
+eval_every_n_iters: 1000 # Evaluate the model every n iterations
+save_checkpoint_every_n_iters: 1000 # Save a checkpoint every n iterations
+log_loss_every_n_iters: 1000 # Log the loss every n iterations
 seed: 873 # Random seed
 
 
