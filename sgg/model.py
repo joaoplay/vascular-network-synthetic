@@ -183,7 +183,7 @@ class GraphSeq2Seq(nn.Module):
 
         # Determine the class that corresponds to zero relative coordinates. The same number of classes are attributed
         # to positive and negative relative coordinates. The middle point is the zero class.
-        zero_class = self.n_classes // 2
+        zero_class = (self.n_classes // 2) - 1
 
         # Iterate over a batch of input paths and encode them
         for batch_sample_idx in range(batch_size):
