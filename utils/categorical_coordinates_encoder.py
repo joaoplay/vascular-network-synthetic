@@ -16,8 +16,9 @@ class CategoricalCoordinatesEncoder:
     def __init__(self, n_categories, encoder_path='categorical_coordinates_encoder.pt') -> None:
         super().__init__()
         self.n_categories = n_categories
-        self.scale = None
-        self.offset = None
+        self.class_width = None
+        self.min_value = None
+        self.max_value = None
         self.encoder_path = encoder_path
 
     def fit(self, data: torch.Tensor):
@@ -29,9 +30,11 @@ class CategoricalCoordinatesEncoder:
         :param data:
         :return:
         """
-        # Compute the scale and offset parameters. Exclude nan values
-        self.scale = (self.n_categories - 1) / (2 * torch.max(torch.abs(data[~torch.isnan(data)])))
-        self.offset = (self.n_categories - 1) / 2
+        self.min_value = torch.min(data[~torch.isnan(data)])
+        self.max_value = torch.max(data[~torch.isnan(data)])
+
+        # Compute class width
+        self.class_width = (self.max_value - self.min_value) / (self.n_categories - 1)
 
     def transform(self, data: torch.Tensor):
         """
@@ -40,11 +43,11 @@ class CategoricalCoordinatesEncoder:
         :return:
         """
         # Check if the parameters have been computed
-        if self.scale is None or self.offset is None:
+        if self.class_width is None or self.min_value is None or self.max_value is None:
             raise ValueError('The parameters of the categorical coordinates encoder have not been computed')
 
         # Encode the coordinates into a single integer
-        categorical_data = torch.round(data[~torch.isnan(data)] * self.scale + self.offset).long()
+        categorical_data = torch.round((data[~torch.isnan(data)] - self.min_value) / self.class_width).long()
         # Clamp the values to the range [0, n_categories]
         categorical_data = torch.clamp(categorical_data, 0, self.n_categories - 1).long()
 
@@ -65,20 +68,19 @@ class CategoricalCoordinatesEncoder:
         :return:
         """
         # Check if the parameters have been computed
-        if self.scale is None or self.offset is None:
+        if self.class_width is None or self.min_value is None or self.max_value is None:
             raise ValueError('The parameters of the categorical coordinates encoder have not been computed')
 
-        # Inverse transform the coordinates
-        data = (categorical_data - self.offset) / self.scale
+        data = self.min_value + (categorical_data * self.class_width)
 
         return data
 
-    def get_parameters(self) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_parameters(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Get the parameters of the categorical coordinates encoder
         :return:
         """
-        return self.scale, self.offset
+        return self.class_width, self.min_value, self.max_value
 
     def save_parameters(self):
         """
@@ -92,10 +94,8 @@ class CategoricalCoordinatesEncoder:
         Load the parameters of the categorical coordinates encoder
         :return:
         """
-        print(self.encoder_path)
-
         # Check if the file exists
         if not path.exists(path.join(self.encoder_path)):
             raise FileNotFoundError('Cannot find the file with the parameters of the categorical coordinates encoder')
 
-        self.scale, self.offset = torch.load(self.encoder_path)
+        self.class_width, self.min_value, self.max_value = torch.load(self.encoder_path)

@@ -78,6 +78,10 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                                                   max_paths_for_each_reachable_node, max_input_path_length,
                                                   max_output_nodes, distance_function)
 
+        # Once x is a list of multiple samples, we need to select one of them randomly.
+        # FIXME: Review it! Does it make sense to select a random sample?
+        x = x[np.random.randint(0, len(x))]
+
         # Move to the correct device
         x = torch.Tensor(x).to(device=device)
 

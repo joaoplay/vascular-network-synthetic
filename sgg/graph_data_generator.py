@@ -96,8 +96,8 @@ class GraphDataGenerator:
                                                           self.max_input_path_length, self.max_output_nodes,
                                                           self.distance_function)
 
-                cur_input_data.append(x)
-                cur_prediction_data.append(y)
+                cur_input_data += x
+                cur_prediction_data += y
 
             # Append the current iteration data to the global data
             input_data.append(cur_input_data)

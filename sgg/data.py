@@ -25,24 +25,21 @@ when generating the synthetic graphs. It is not used during training.
 def generate_training_samples_for_node(graph: nx.Graph, node_id: int, max_input_paths: int,
                                        max_paths_for_each_reachable_node: int,
                                        max_input_path_length: int, max_output_nodes: int,
-                                       distance_function) -> Tuple[torch.Tensor, torch.Tensor]:
+                                       distance_function) -> Tuple[List, List]:
     training_sequence = generate_paths_for_node(graph=graph, node_id=node_id,
                                                 max_input_paths=max_input_paths,
                                                 max_paths_for_each_reachable_node=max_paths_for_each_reachable_node,
                                                 max_input_path_length=max_input_path_length,
                                                 distance_function=distance_function)
 
-    # Sample a single example from training sequence
-    training_example = [training_sequence[np.random.randint(len(training_sequence))]]
-
-    x, y = encode_training_sequence(training_sequence=training_example,
+    x, y = encode_training_sequence(training_sequence=training_sequence,
                                     max_input_paths_per_node=max_input_paths,
                                     max_input_path_length=max_input_path_length,
                                     max_output_nodes=max_output_nodes)
 
     # Squeeze the batch dimension
-    x = x.squeeze(0)
-    y = y.squeeze(0)
+    x = list(x)
+    y = list(y)
 
     return x, y
 

@@ -2,9 +2,7 @@ from copy import deepcopy
 from typing import Callable, Dict, Optional
 
 import networkx as nx
-import numpy as np
 import torch
-from matplotlib import pyplot as plt
 from networkx import Graph
 from torch import optim, nn
 from torch.utils.data import Dataset, DataLoader
@@ -137,11 +135,6 @@ class GraphSeq2SeqTrainer:
         """
         # Get a seed from the graph and considering a maximum starting_seed_depth
         seed_graph, unvisited_nodes = get_starting_map(self.graph, depth=self.seed_graph_depth)
-
-        original_seed_graph_relabeled = nx.convert_node_labels_to_integers(deepcopy(seed_graph),
-                                                                           label_attribute='old_label')
-        unvisited_nodes_relabeled = [node_idx for node_idx, node_attr in original_seed_graph_relabeled.nodes(data=True)
-                                     if node_attr['old_label'] in unvisited_nodes]
         seed_graph = nx.Graph(seed_graph)
 
         # Generate a synthetic graph from the previously obtained seed.
