@@ -22,7 +22,7 @@ def evaluate_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
         plots = metrics['plots']
         # Send plots to wandb
         for plot_label, plot in plots.items():
-            wandb.log({f'{plot_label}': wandb.Image(plot)})
+            wandb.log({f'{plot_label}': plot})
 
 
 def save_checkpoint_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, checkpoint_save_path: str):
