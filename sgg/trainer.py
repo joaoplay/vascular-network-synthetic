@@ -156,17 +156,16 @@ class GraphSeq2SeqTrainer:
                                                num_iterations=self.synthetic_graph_gen_iterations,
                                                max_loop_distance=self.max_loop_distance, device=self.device)
 
-        """synth_graph = nx.convert_node_labels_to_integers(synth_graph, label_attribute='old_label')
+        synth_graph = nx.convert_node_labels_to_integers(synth_graph, label_attribute='old_label')
         fig1 = draw_3d_graph(synth_graph)
 
         seed_graph = nx.convert_node_labels_to_integers(seed_graph, label_attribute='old_label')
         fig2 = draw_3d_graph(seed_graph)
 
-        fig1.show()
-        fig2.show()"""
-
         # Calculate metrics
         metrics = compute_graph_comparison_metrics(synth_graph, self.graph)
+        metrics['plots']['synthetic_graph'] = fig1
+        metrics['plots']['seed_graph'] = fig2
 
         return metrics
 
