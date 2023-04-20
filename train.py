@@ -85,7 +85,8 @@ def train_model(cfg: DictConfig):
     trainer = GraphSeq2SeqTrainer(model=model, train_dataset=dataset, graph=training_graph,
                                   distance_function=get_signed_distance_between_nodes,
                                   categorical_coordinates_encoder=cat_coordinates_encoder,
-                                  class_weights=None, ignore_index=cfg.num_classes, **cfg.evaluator, **cfg.paths, **cfg.trainer)
+                                  class_weights=None, ignore_index=cfg.num_classes, **cfg.evaluator, **cfg.paths,
+                                  **cfg.trainer)
 
     # Add a set of callbacks to: print the training loss; generate a synthetic graph and perform a comparison
     # with the validation data; save the model to a checkpoint file.

@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from sgg.data import generate_training_samples_for_node
-from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
+from utils.scale_factor_categorical_encoder import ScaleFactorCategoricalCoordinatesEncoder
 from utils.torch import unique
 
 
@@ -58,9 +58,7 @@ class GraphDataGenerator:
 
         # Load categorical encoder. The file is assumed to be in the same directory as the data and the name is
         # always the same.
-        categorical_coordinates_encoder = CategoricalCoordinatesEncoder(n_categories=self.num_classes,
-                                                                        encoder_path=self.categorical_encoder_path)
-        categorical_coordinates_encoder.load_parameters()
+        categorical_coordinates_encoder = ScaleFactorCategoricalCoordinatesEncoder(self.num_classes)
         # Load training data
         data_x = torch.load(self.data_x_path)
         data_y = torch.load(self.data_y_path)
@@ -113,22 +111,16 @@ class GraphDataGenerator:
 
         # 2 - Convert relative positions to classes
 
-        # Flat input_data and prediction_data and concatenate them. This is necessary to have a single tensor
-        # from which we can infer the range of values for all the coordinates.
-        input_data_flatten = input_data.flatten()
-        prediction_data_flatten = prediction_data.flatten()
-
-        # Print min value in prediction_data_flatten
-        print(f'Min value in prediction_data_flatten: {prediction_data_flatten.min()}')
-
-        all_data = torch.cat((input_data_flatten, prediction_data_flatten), dim=0)
         # Create and fit categorical encoder
-        categorical_coordinates_encoder = CategoricalCoordinatesEncoder(n_categories=self.num_classes,
-                                                                        encoder_path=self.categorical_encoder_path)
-        categorical_coordinates_encoder.fit(all_data)
+        categorical_coordinates_encoder = ScaleFactorCategoricalCoordinatesEncoder(n_categories=self.num_classes)
         # Encode input_data and prediction_data
         input_data = categorical_coordinates_encoder.transform(input_data)
         prediction_data = categorical_coordinates_encoder.transform(prediction_data)
+
+        print(f'Input data min: {input_data.min()}')
+        print(f'Input data max: {input_data.max()}')
+        print(f'Prediction data min: {prediction_data.min()}')
+        print(f'Prediction data max: {prediction_data.max()}')
 
         print(f'Dataset has shape data_x:{input_data.shape} and data_y:{prediction_data.shape}')
 
@@ -145,7 +137,6 @@ class GraphDataGenerator:
         # Save data to disk
         torch.save(input_data, self.data_x_path)
         torch.save(prediction_data, self.data_y_path)
-        categorical_coordinates_encoder.save_parameters()
 
         return input_data, prediction_data, categorical_coordinates_encoder
 
@@ -183,4 +174,3 @@ class GraphDataGenerator:
         :return:
         """
         return os.path.join(self.root_dir, f'{self.file_name_prefix}_categorical_coordinates_encoder.pt')
-

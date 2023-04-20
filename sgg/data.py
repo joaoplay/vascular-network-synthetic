@@ -7,7 +7,6 @@ from collections.abc import Callable
 
 import networkx as nx
 import numpy as np
-import torch
 
 
 """"
@@ -287,7 +286,6 @@ def encoding_simplified(training_sequence: list, max_input_paths_per_node: int,
             # Encode input and move the previous path into x
             input_path_node_index = 0
             for input_path_node in path[0]:
-                print(input_path_node.shape)
                 x[train_sequence_index, path_index, input_path_node_index, 0] = input_path_node[0] * 2 + 100 + 1
                 x[train_sequence_index, path_index, input_path_node_index, 1] = input_path_node[1] * 2 + 100 + 1
                 x[train_sequence_index, path_index, input_path_node_index, 2] = input_path_node[2] * 2 + 100 + 1

@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Callable, Dict, Optional
 
 import networkx as nx
