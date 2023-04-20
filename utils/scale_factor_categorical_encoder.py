@@ -3,7 +3,7 @@ import torch
 
 class ScaleFactorCategoricalCoordinatesEncoder:
 
-    def __init__(self, n_categories, scale_factor=4) -> None:
+    def __init__(self, n_categories, scale_factor=1) -> None:
         super().__init__()
         self.n_categories = n_categories
         self.scale_factor = scale_factor

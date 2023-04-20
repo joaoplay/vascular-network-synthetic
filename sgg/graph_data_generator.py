@@ -3,6 +3,7 @@ import os
 import networkx as nx
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 
 from sgg.data import generate_training_samples_for_node
 from utils.scale_factor_categorical_encoder import ScaleFactorCategoricalCoordinatesEncoder
@@ -116,6 +117,15 @@ class GraphDataGenerator:
         # Encode input_data and prediction_data
         input_data = categorical_coordinates_encoder.transform(input_data)
         prediction_data = categorical_coordinates_encoder.transform(prediction_data)
+
+        # Draw histogram of the input data and prediction data
+        plt.hist(input_data.flatten(), bins=100)
+        plt.title('Input data histogram')
+        plt.show()
+
+        plt.hist(prediction_data.flatten(), bins=100)
+        plt.title('Prediction data histogram')
+        plt.show()
 
         print(f'Input data min: {input_data.min()}')
         print(f'Input data max: {input_data.max()}')

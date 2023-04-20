@@ -64,6 +64,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     """
 
     # Copy generated graph from seed graph, so that we don't modify the seed graph.
+
     generated_graph = seed_graph.copy()
 
     # Get the greatest node index in the graph to avoid overwriting existing nodes.
