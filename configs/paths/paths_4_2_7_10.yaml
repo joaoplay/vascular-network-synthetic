@@ -1,4 +1,4 @@
-max_input_paths: 2 # Maximum number of input paths to the model
+max_input_paths: 4 # Maximum number of input paths to the model
 max_paths_for_each_reachable_node: 2 # Maximum number of paths to each reachable node
 max_input_path_length: 7 # Maximum length of each input path
 max_output_nodes: 10 # Maximum number of output nodes
