@@ -185,8 +185,6 @@ class GraphSeq2Seq(nn.Module):
         # to positive and negative relative coordinates. The middle point is the zero class.
         zero_class = (self.n_classes // 2) - 1
 
-        print("zero_class: ", zero_class)
-
         # Iterate over a batch of input paths and encode them
         for batch_sample_idx in range(batch_size):
             sample = x[batch_sample_idx]
@@ -203,24 +201,17 @@ class GraphSeq2Seq(nn.Module):
             out, encoder_hidden = self.encoder(sample, encoder_hidden)
             batch_encoder_hidden[:, batch_sample_idx, :] = torch.sum(encoder_hidden, dim=1)
 
-        print("batch_encoder_hidden: ", batch_encoder_hidden.shape)
-
         # Aggregate context
         decoder_hidden = batch_encoder_hidden.to(device=self.device)
-
-        print("decoder_hidden: ", decoder_hidden.shape)
 
         # Initialize the decoder input with the zero class. Note that no special token is used for the start of the
         # sequence. It is simply indicating that no movement existed in the previous node.
         decoder_start_input = torch.tensor([[[zero_class] * self.n_dimensions]]).repeat(batch_size, 1, 1).long().to(
             device=self.device)
 
-        print("decoder_start_input: ", decoder_start_input.shape)
-
         if y is not None:
             # TRAINING: Perform teacher forcing
             decoder_input = torch.cat([decoder_start_input, y[:, 1, 0:-1]], dim=1)
-            print("decoder_input: ", decoder_input.shape)
             # Note that the aggregated context is being passed to the decoder
             decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
             decoder_output = decoder_output.view(-1, self.n_classes)
