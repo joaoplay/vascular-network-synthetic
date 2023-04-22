@@ -58,3 +58,31 @@ def generate_training_graph(dataset_output_path: str, voxel_dim: list = (100.0, 
     nx_graph = convert_to_networkx([largest_component_data])[0]
 
     return nx_graph, largest_component_data
+
+
+def generate_training_graph_legacy(dataset_output_path: str, voxel_dim: list = (100.0, 100.0, 100.0),
+                                   low_degree_threshold: float = 0.01):
+    dataset = VesselGraphDataset(root=f'{dataset_output_path}/data', name='BALBc_no1', use_edge_attr=True,
+                                 use_atlas=False)
+    data = dataset[0].clone()
+    data_undirected = Data(x=data.x, edge_index=data.edge_index_undirected, edge_attr=data.edge_attr_undirected)
+
+    c = torch_geometric.nn.voxel_grid(data_undirected.x[:, 0:3], [100.0, 100.0, 100.0])
+
+    # Count unique elements in c tensor
+    unique, counts = torch.unique(c, return_counts=True)
+    # Get the index of the most common element
+    most_common_index = unique[counts.argmax()]
+
+    clustered_data = data_undirected.clone()
+    filtered_nodes = torch.argwhere(c == most_common_index).squeeze()
+    clustered_data.edge_index = clustered_data.edge_index[:, np.all(np.isin(clustered_data.edge_index, filtered_nodes),
+                                                                    axis=0)]
+
+    r_isolated_nodes = torch_geometric.transforms.RemoveIsolatedNodes()
+    largest_component = torch_geometric.transforms.LargestConnectedComponents()
+    r_isolated_nodes(clustered_data)
+    largest_component_data = largest_component(clustered_data)
+    nx_graph = convert_to_networkx([largest_component_data])[0]
+
+    return nx_graph, largest_component_data

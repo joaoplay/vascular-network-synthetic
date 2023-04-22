@@ -1,6 +1,7 @@
 import os
 
 import hydra
+import pandas as pd
 import torch
 import wandb
 from omegaconf import DictConfig
@@ -15,7 +16,7 @@ from sgg.model import GraphSeq2Seq
 from sgg.trainer import GraphSeq2SeqTrainer, ON_BATCH_END
 from utils.torch import compute_class_weights
 from utils.util import set_seed, create_directory
-from vascular_network.dataset_generation import generate_training_graph
+from vascular_network.dataset_generation import generate_training_graph, generate_training_graph_legacy
 
 
 @hydra.main(config_path="configs", config_name="default_config", version_base="1.2")
@@ -49,17 +50,18 @@ def train_model(cfg: DictConfig):
     device = torch.device(cfg.trainer.device)
 
     # Generate a training graph from VesselGraph
-    training_graph, _ = generate_training_graph(OUTPUT_PATH)
+    training_graph, _ = generate_training_graph_legacy(OUTPUT_PATH)
     # Override max output nodes to be the maximum between the config and the maximum degree across all
     # nodes in the graph
-    cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
+    # FIXME: Reactivate it ASAP
+    # cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
 
     # Create a GraphDataGenerator responsible for generating the sequential training data from a graph.
     graph_data_generator = GraphDataGenerator(graph=training_graph, root_dir=preprocessed_data_dir,
                                               distance_function=get_signed_distance_between_nodes,
                                               num_classes=cfg.num_classes,
                                               num_iterations=cfg.num_preprocessing_iterations,
-                                              remove_duplicates=cfg.remove_duplicates, **cfg.paths)
+                                              remove_duplicates=True, **cfg.paths)
 
     # Load or generate data. Apart from the data, the corresponding categorical coordinates encoder is returned.
     # It will be necessary to generate new predictions and evaluate the model.

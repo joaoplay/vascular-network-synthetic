@@ -1,46 +1,9 @@
 import random
-from typing import List, Tuple
-
-from networkx import single_source_shortest_path, all_simple_paths
-
-from collections.abc import Callable
+from typing import Callable, List
 
 import networkx as nx
 import numpy as np
-
-
-""""
-IMPORTANT: PLEASE NOTE THAT THIS CODE WAS NOT WRITTEN BY ME. IT WAS WRITTEN BY THE AUTHORS OF THIS GITHUB REPOSITORY:
-
-https://github.com/giodestone/ann-and-pg-city-layout-generator
-
-The code was very useful but needs several improvements in terms of code quality, performance and readability.
-I did small changes to make it work with the rest of the code, but not much more. I will try to improve it as much as 
-I can in the future. For now, this code is executed when generating the training data (in the preprocessing step) or 
-when generating the synthetic graphs. It is not used during training.
-"""
-
-
-def generate_training_samples_for_node(graph: nx.Graph, node_id: int, max_input_paths: int,
-                                       max_paths_for_each_reachable_node: int,
-                                       max_input_path_length: int, max_output_nodes: int,
-                                       distance_function) -> Tuple[List, List]:
-    training_sequence = generate_paths_for_node(graph=graph, node_id=node_id,
-                                                max_input_paths=max_input_paths,
-                                                max_paths_for_each_reachable_node=max_paths_for_each_reachable_node,
-                                                max_input_path_length=max_input_path_length,
-                                                distance_function=distance_function)
-
-    x, y = encode_training_sequence(training_sequence=training_sequence,
-                                    max_input_paths_per_node=max_input_paths,
-                                    max_input_path_length=max_input_path_length,
-                                    max_output_nodes=max_output_nodes)
-
-    # Squeeze the batch dimension
-    x = list(x)
-    y = list(y)
-
-    return x, y
+from networkx import single_source_shortest_path, all_simple_paths
 
 
 def convert_path_to_changes_in_distance(graph: nx.Graph, path: list,
@@ -118,7 +81,7 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
 def generate_paths_for_node(graph: nx.graph, node_id: int, max_input_paths: int, max_paths_for_each_reachable_node: int,
                             max_input_path_length: int, distance_function: Callable[[nx.Graph, int, int], List[float]]):
     """
-    Generate paths for a node.
+
     :param graph:
     :param node_id:
     :param max_input_paths:
@@ -286,6 +249,7 @@ def encoding_simplified(training_sequence: list, max_input_paths_per_node: int,
             # Encode input and move the previous path into x
             input_path_node_index = 0
             for input_path_node in path[0]:
+                print(input_path_node.shape)
                 x[train_sequence_index, path_index, input_path_node_index, 0] = input_path_node[0] * 2 + 100 + 1
                 x[train_sequence_index, path_index, input_path_node_index, 1] = input_path_node[1] * 2 + 100 + 1
                 x[train_sequence_index, path_index, input_path_node_index, 2] = input_path_node[2] * 2 + 100 + 1
@@ -325,12 +289,12 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
     # [x, y,  x, y,  ...  x, y]
     # all x,y that are empty should be zero.
 
-    no_move = (0.0, 0.0, 0.0)
-    padding = (None, None, None)
+    empty_tuple = (0, 0, 0)
+    padding = (50.5, 50.5, 50.5)
 
     empty_incoming_path = []
     for _ in range(max_input_path_length):
-        empty_incoming_path.append(no_move)
+        empty_incoming_path.append(empty_tuple)
 
     empty_prediction = []
     for _ in range(max_output_nodes):
@@ -362,7 +326,6 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
     y = np.empty(output_shape, dtype='float32')
 
     # Encode training sequence.
-    # FIXME: Change it to enumerate
     train_sequence_index = 0
     for paths in training_sequence:
         # Pad with empty paths at the start to bring the length up to max_num_input_previous_paths.
@@ -375,21 +338,20 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
                 "max_num_previous_paths.")
 
         path_index = 0
-        # FIXME: Change it to enumerate
         for path in paths:
             # Pad incoming path with empty distances at the start to bring the length up to max_num_input_nodes.
             for _ in range(max_input_path_length - len(path[0])):
-                path[0].insert(0, no_move)
+                path[0].insert(0, empty_tuple)
 
             if len(path[0]) > max_input_path_length:
                 raise Exception(
                     "Error: The input path is too long! The number of input paths must be shortened to "
-                    "max_num_input_nodes.")
+                    "max_num_input_nodes.")  # They should already be a max of max_num_input_nodes if generate_training_sequence_for_graph was called correctly.
 
             # Pad prediction with empty tuples at the end to bring up the length to max_num_output_nodes.
             if len(path[1]) < max_output_nodes:
                 # Insert empty tuple at the end of first prediction.
-                path[1].append(no_move)
+                path[1].append(empty_tuple)
 
                 for _ in range(max_output_nodes - len(path[1])):
                     path[1].append(padding)
@@ -397,7 +359,7 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
             if len(path[1]) > max_output_nodes:
                 raise Exception(
                     "Error: Too many prediction nodes! The number of predictions must be shortened to "
-                    "max_num_output_nodes.")
+                    "max_num_output_nodes.")  # They should already be a max of max_num_output_nodes if generate_training_sequence_for_graph was called correctly.
 
             # Encode input and move the previous path into x
             input_path_node_index = 0
@@ -420,5 +382,9 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
             path_index += 1
 
         train_sequence_index += 1
+
+    # Clip the coordinates between -50 and 50.5
+    x = np.clip(x, -50, 50.5)
+    y = np.clip(y, -50, 50.5)
 
     return x, y

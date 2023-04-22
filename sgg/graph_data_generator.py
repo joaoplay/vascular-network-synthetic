@@ -2,6 +2,7 @@ import os
 
 import networkx as nx
 import numpy as np
+import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 
@@ -110,6 +111,15 @@ class GraphDataGenerator:
         input_data = torch.tensor(input_data)
         prediction_data = torch.tensor(prediction_data)
 
+        # FIXME: Clean
+        # Export data_x to csv with dimensions (2099 * 2, 5 * 3)
+        # input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
+        #                                   input_data.shape[3])
+        # Convert to DataFrame
+        # data_x_df = pd.DataFrame(input_data_np)
+        # Export to csv
+        # data_x_df.to_csv('raw_data_x.csv', index=False)
+
         # 2 - Convert relative positions to classes
 
         # Create and fit categorical encoder
@@ -118,14 +128,27 @@ class GraphDataGenerator:
         input_data = categorical_coordinates_encoder.transform(input_data)
         prediction_data = categorical_coordinates_encoder.transform(prediction_data)
 
-        # Draw histogram of the input data and prediction data
-        plt.hist(input_data.flatten(), bins=100)
-        plt.title('Input data histogram')
-        plt.show()
+        # Export data_x to csv with dimensions (2099 * 2, 5 * 3)
+        # input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
+        #                                   input_data.shape[3])
+        # Convert to DataFrame
+        # data_x_df = pd.DataFrame(input_data_np)
+        # Export to csv
+        # data_x_df.to_csv('data_x_new.csv', index=False)
 
-        plt.hist(prediction_data.flatten(), bins=100)
-        plt.title('Prediction data histogram')
-        plt.show()
+        # prediction_data_np = prediction_data.reshape(prediction_data.shape[0] * prediction_data.shape[1],
+        #                                             prediction_data.shape[2] * prediction_data.shape[3])
+        # data_y_df = pd.DataFrame(prediction_data_np)
+        # data_y_df.to_csv('data_y_new.csv', index=False)
+
+        # Draw histogram of the input data and prediction data
+        # plt.hist(input_data.flatten(), bins=100)
+        # plt.title('Input data histogram')
+        # plt.show()
+
+        # plt.hist(prediction_data.flatten(), bins=100)
+        # plt.title('Prediction data histogram')
+        # plt.show()
 
         print(f'Input data min: {input_data.min()}')
         print(f'Input data max: {input_data.max()}')
@@ -140,6 +163,25 @@ class GraphDataGenerator:
             print(f'Removing duplicates...')
             input_data, unique_indices = unique(input_data, dim=0)
             prediction_data = prediction_data[unique_indices]
+
+            # input_data, unique_indices = torch.unique(input_data, dim=0, return_inverse=True)
+            # prediction_data = prediction_data[unique_indices]
+
+            # Input data
+            # filtered_input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
+            #                                             input_data.shape[3])
+            # filtered_input_data_df = pd.DataFrame(filtered_input_data_np)
+            # filtered_input_data_df.to_csv('filtered_input_new.csv', index=False)
+            # Prediction data
+            # filtered_prediction_data_np = prediction_data.reshape(prediction_data.shape[0] * prediction_data.shape[1],
+            #                                                      prediction_data.shape[2] * prediction_data.shape[3])
+            # filtered_prediction_data_df = pd.DataFrame(filtered_prediction_data_np)
+            # filtered_prediction_data_df.to_csv('filtered_prediction_new.csv', index=False)
+
+            # Convert to DataFrame
+            # sorted_input_df = pd.DataFrame(input_data_np)
+            # Export to csv
+            # sorted_input_df.to_csv('sorted_input_new.csv', index=False)
 
             print(f'Dataset after removing duplicates has shape data_x:{input_data.shape} '
                   f'and data_y:{prediction_data.shape}')

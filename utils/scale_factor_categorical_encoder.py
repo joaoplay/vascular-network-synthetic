@@ -3,7 +3,7 @@ import torch
 
 class ScaleFactorCategoricalCoordinatesEncoder:
 
-    def __init__(self, n_categories, scale_factor=1) -> None:
+    def __init__(self, n_categories, scale_factor=2.0) -> None:
         super().__init__()
         self.n_categories = n_categories
         self.scale_factor = scale_factor
@@ -16,7 +16,7 @@ class ScaleFactorCategoricalCoordinatesEncoder:
         :return:
         """
         # Encode the coordinates into a single integer
-        categorical_data = torch.round((data[~torch.isnan(data)] * self.scale_factor + self.n_categories_mid)).long()
+        categorical_data = (data[~torch.isnan(data)] * self.scale_factor + self.n_categories_mid)
         # Clamp the values to the range [0, n_categories]
         categorical_data = torch.clamp(categorical_data, 0, self.n_categories - 1).long()
 

@@ -12,4 +12,4 @@ load_preprocessed_data: false # If true, load preprocessed data from disk
 eval_every_n_iters: 1000 # Evaluate the model every n iterations
 save_checkpoint_every_n_iters: 1000 # Save a checkpoint every n iterations
 log_loss_every_n_iters: 1000 # Log the loss every n iterations
-seed: 873 # Random seed
+seed: 42 # Random seed
