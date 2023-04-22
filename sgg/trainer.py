@@ -100,6 +100,9 @@ class GraphSeq2SeqTrainer:
             batch = [t.to(self.device) for t in batch]
             x, y = batch
 
+            x_np = x.cpu().numpy()
+            y_np = y.cpu().numpy()
+
             # Forward pass through the encoder. This is done in batches.
             decoder_output = self.model(x, y)
             y = y[:, -1, :, :].reshape(-1)
