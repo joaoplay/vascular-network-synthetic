@@ -70,6 +70,9 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     # Get the greatest node index in the graph to avoid overwriting existing nodes.
     current_node_idx = max(list(generated_graph.nodes())) + 1
 
+    established_loops = 0
+    new_nodes = 0
+
     for i in range(num_iterations):
         # Pick an unvisited node. This is the node to be expanded.
         current_node_id = unvisited_nodes.pop(0)
@@ -81,13 +84,15 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
         # Once x is a list of multiple samples, we need to select one of them randomly.
         # FIXME: Review it! Does it make sense to select a random sample?
-        x = x[np.random.randint(0, len(x))]
+        x = x[0]
 
         # Move to the correct device
         x = torch.Tensor(x).to(device=device)
 
         # Convert relative coordinates to categorical features
         x = categorical_coordinates_encoder.transform(x).unsqueeze(0)
+
+        # print(torch.sum(x))
 
         # Call model to generate new nodes from previously codified paths
         predicted_nodes = graph_seq_2_seq.generate(x)
@@ -126,12 +131,14 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                 dist = torch.cdist(next_node_coord.unsqueeze(0), current_graph_coordinates)
 
                 if torch.min(dist) <= max_loop_distance:
+                    established_loops += 1
                     # If the new node is close to an existing node, add an edge between the current node and the
                     # existing node. A new node is not added.
                     loop_node_index = torch.argmin(dist).item()
                     loop_node_id = list(nodes_list)[loop_node_index]
                     generated_graph.add_edge(current_node_id, loop_node_id)
                 else:
+                    new_nodes += 1
                     # Otherwise, add a new node and an edge between the current node and the new node.
                     new_node_id = current_node_idx
                     current_node_idx += 1
@@ -145,6 +152,9 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         if len(unvisited_nodes) == 0:
             # No more unvisited nodes. Stop the generation process.
             break
+
+    print("Established loops: ", established_loops)
+    print("New nodes", new_nodes)
 
     return generated_graph
 

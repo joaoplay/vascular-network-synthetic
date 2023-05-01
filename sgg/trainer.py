@@ -1,6 +1,8 @@
+import os
 from typing import Callable, Dict, Optional
 
 import networkx as nx
+import pandas as pd
 import torch
 from networkx import Graph
 from torch import optim, nn
@@ -63,7 +65,8 @@ class GraphSeq2SeqTrainer:
         # Use CrossEntropyLoss as the loss function. When the dataset is unbalanced, the class weights are used to
         # penalize the loss function for the underrepresented classes.
         class_weights = class_weights.to(device=device) if class_weights is not None else None
-        self.loss = nn.CrossEntropyLoss(weight=class_weights, ignore_index=ignore_index)
+
+        self.loss = nn.CrossEntropyLoss(ignore_index=ignore_index)
         self.max_iters = max_iters
         self.device = device
 
@@ -81,7 +84,7 @@ class GraphSeq2SeqTrainer:
         """
         self.model.train()
         # Create a simple data loader
-        dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
+        dataloader = DataLoader(self.train_dataset, batch_size=1, shuffle=False, num_workers=0)
 
         data_iter = iter(dataloader)
         # A new training process is starting. Reset the iteration number and the last loss value.
@@ -99,9 +102,6 @@ class GraphSeq2SeqTrainer:
             # Move the batch x and y to the device
             batch = [t.to(self.device) for t in batch]
             x, y = batch
-
-            x_np = x.cpu().numpy()
-            y_np = y.cpu().numpy()
 
             # Forward pass through the encoder. This is done in batches.
             decoder_output = self.model(x, y)

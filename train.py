@@ -51,6 +51,7 @@ def train_model(cfg: DictConfig):
 
     # Generate a training graph from VesselGraph
     training_graph, _ = generate_training_graph_legacy(OUTPUT_PATH)
+
     # Override max output nodes to be the maximum between the config and the maximum degree across all
     # nodes in the graph
     # FIXME: Reactivate it ASAP

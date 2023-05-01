@@ -113,12 +113,20 @@ class GraphDataGenerator:
 
         # FIXME: Clean
         # Export data_x to csv with dimensions (2099 * 2, 5 * 3)
-        # input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
+        #input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
         #                                   input_data.shape[3])
         # Convert to DataFrame
-        # data_x_df = pd.DataFrame(input_data_np)
+        #input_data_df = pd.DataFrame(input_data_np)
         # Export to csv
-        # data_x_df.to_csv('raw_data_x.csv', index=False)
+        #input_data_df.to_csv('data_x_raw_vascular.csv', index=False)
+
+        #prediction_data_np = prediction_data.reshape(prediction_data.shape[0] * prediction_data.shape[1],
+        #                                             prediction_data.shape[2] *
+        #                                             prediction_data.shape[3])
+        # Convert to DataFrame
+        #data_x_df = pd.DataFrame(prediction_data_np)
+        # Export to csv
+        #data_x_df.to_csv('data_y_raw_vascular.csv', index=False)
 
         # 2 - Convert relative positions to classes
 
@@ -166,17 +174,6 @@ class GraphDataGenerator:
 
             # input_data, unique_indices = torch.unique(input_data, dim=0, return_inverse=True)
             # prediction_data = prediction_data[unique_indices]
-
-            # Input data
-            # filtered_input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
-            #                                             input_data.shape[3])
-            # filtered_input_data_df = pd.DataFrame(filtered_input_data_np)
-            # filtered_input_data_df.to_csv('filtered_input_new.csv', index=False)
-            # Prediction data
-            # filtered_prediction_data_np = prediction_data.reshape(prediction_data.shape[0] * prediction_data.shape[1],
-            #                                                      prediction_data.shape[2] * prediction_data.shape[3])
-            # filtered_prediction_data_df = pd.DataFrame(filtered_prediction_data_np)
-            # filtered_prediction_data_df.to_csv('filtered_prediction_new.csv', index=False)
 
             # Convert to DataFrame
             # sorted_input_df = pd.DataFrame(input_data_np)
