@@ -84,7 +84,7 @@ class GraphSeq2SeqTrainer:
         """
         self.model.train()
         # Create a simple data loader
-        dataloader = DataLoader(self.train_dataset, batch_size=1, shuffle=False, num_workers=0)
+        dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
 
         data_iter = iter(dataloader)
         # A new training process is starting. Reset the iteration number and the last loss value.

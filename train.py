@@ -16,7 +16,7 @@ from sgg.model import GraphSeq2Seq
 from sgg.trainer import GraphSeq2SeqTrainer, ON_BATCH_END
 from utils.torch import compute_class_weights
 from utils.util import set_seed, create_directory
-from vascular_network.dataset_generation import generate_training_graph, generate_training_graph_legacy
+from vascular_network.dataset_generation import generate_training_graph_legacy
 
 
 @hydra.main(config_path="configs", config_name="default_config", version_base="1.2")
