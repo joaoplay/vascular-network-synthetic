@@ -1,6 +1,6 @@
 run_name: test_run # Name of the run. Used to create a folder to save the checkpoints and logs
 defaults:
-  - paths: paths_2_2_5_10
+  - paths: paths_4_2_5_10
   - trainer: trainer_1
   - evaluator: evaluator_1
   - model: model_1
