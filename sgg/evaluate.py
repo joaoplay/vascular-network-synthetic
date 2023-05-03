@@ -96,6 +96,8 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         # Convert relative coordinates to categorical features
         x = categorical_coordinates_encoder.transform(x).unsqueeze(0)
 
+        print("Data shape after encoding: ", x.shape)
+
         # Call model to generate new nodes from previously codified paths
         predicted_nodes = graph_seq_2_seq.generate(x)
 
