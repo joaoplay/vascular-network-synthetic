@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any
 
 import networkx as nx
@@ -64,7 +65,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     """
 
     # Copy generated graph from seed graph, so that we don't modify the seed graph.
-    generated_graph = seed_graph.copy()
+    generated_graph = deepcopy(seed_graph)
 
     # Get the greatest node index in the graph to avoid overwriting existing nodes.
     current_node_idx = max(list(generated_graph.nodes())) + 1
@@ -73,7 +74,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     new_nodes = 0
 
     for i in range(num_iterations):
-        previous_generated_graph = generated_graph.copy()
+        previous_generated_graph = deepcopy(generated_graph)
 
         # Pick an unvisited node. This is the node to be expanded.
         current_node_id = unvisited_nodes.pop(0)
