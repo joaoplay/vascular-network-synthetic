@@ -64,7 +64,6 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     """
 
     # Copy generated graph from seed graph, so that we don't modify the seed graph.
-
     generated_graph = seed_graph.copy()
 
     # Get the greatest node index in the graph to avoid overwriting existing nodes.
@@ -74,6 +73,8 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     new_nodes = 0
 
     for i in range(num_iterations):
+        previous_generated_graph = generated_graph.copy()
+
         # Pick an unvisited node. This is the node to be expanded.
         current_node_id = unvisited_nodes.pop(0)
 
@@ -92,8 +93,6 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         # Convert relative coordinates to categorical features
         x = categorical_coordinates_encoder.transform(x).unsqueeze(0)
 
-        # print(torch.sum(x))
-
         # Call model to generate new nodes from previously codified paths
         predicted_nodes = graph_seq_2_seq.generate(x)
 
@@ -103,21 +102,21 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
             if torch.any(decoded_new_node):
                 # Check if the new node is close to an existing node.
-                nodes_list = list(generated_graph.nodes)
+                nodes_list = list(previous_generated_graph.nodes)
                 # Remove the current node from the list of nodes, so that we don't check if the new node is close to
                 # itself.
                 current_node_index = nodes_list.index(current_node_id)
                 nodes_list.pop(current_node_index)
 
                 # Get the coordinates of the current node.
-                current_node_coord = torch.tensor(np.array(generated_graph.nodes[current_node_id]['node_label']),
+                current_node_coord = torch.tensor(np.array(previous_generated_graph.nodes[current_node_id]['node_label']),
                                                   device=device)
 
                 # Calculate the coordinates of the new node.
                 next_node_coord = (current_node_coord + decoded_new_node)
 
                 # Get the coordinates of all the other nodes in the graph.
-                current_graph_coordinates = torch.tensor(np.array(list(nx.get_node_attributes(generated_graph,
+                current_graph_coordinates = torch.tensor(np.array(list(nx.get_node_attributes(previous_generated_graph,
                                                                                               "node_label").values())),
                                                          device=device)
 
