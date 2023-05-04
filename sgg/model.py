@@ -190,12 +190,10 @@ class GraphSeq2Seq(nn.Module):
             sample = x[batch_sample_idx]
 
             # Get mask of elements in dim 0 of sample that are not all zeros
-            non_padding_paths = torch.amax(torch.abs(sample - zero_class), dim=(1, 2)) > 0
+            # non_padding_paths = torch.amax(torch.abs(sample - zero_class), dim=(1, 2)) > 0
 
             # Filter out all padding paths
-            sample = sample[non_padding_paths]
-
-            print(sample.shape)
+            # sample = sample[non_padding_paths]
 
             encoder_hidden = self.encoder.init_hidden(sample.size(0)).to(device=self.device)
 
