@@ -145,16 +145,13 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     generated_graph.add_node(new_node_id, node_label=next_node_coord.tolist())
                     generated_graph.add_edge(current_node_id, new_node_id)
                     unvisited_nodes.append(new_node_id)
-                    nodes_to_ignore.append(new_node_id)
+                    nodes_to_ignore.append(list(generated_graph.nodes).index(new_node_id))
             else:
                 break
 
         if len(unvisited_nodes) == 0:
             # No more unvisited nodes. Stop the generation process.
             break
-
-    print("Established loops: ", established_loops)
-    print("New nodes", new_nodes)
 
     return generated_graph
 

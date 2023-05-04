@@ -113,20 +113,20 @@ class GraphDataGenerator:
 
         # FIXME: Clean
         # Export data_x to csv with dimensions (2099 * 2, 5 * 3)
-        #input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
+        # input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
         #                                   input_data.shape[3])
         # Convert to DataFrame
-        #input_data_df = pd.DataFrame(input_data_np)
+        # input_data_df = pd.DataFrame(input_data_np)
         # Export to csv
-        #input_data_df.to_csv('data_x_raw_vascular.csv', index=False)
+        # input_data_df.to_csv('data_x_raw_vascular.csv', index=False)
 
-        #prediction_data_np = prediction_data.reshape(prediction_data.shape[0] * prediction_data.shape[1],
+        # prediction_data_np = prediction_data.reshape(prediction_data.shape[0] * prediction_data.shape[1],
         #                                             prediction_data.shape[2] *
         #                                             prediction_data.shape[3])
         # Convert to DataFrame
-        #data_x_df = pd.DataFrame(prediction_data_np)
+        # data_x_df = pd.DataFrame(prediction_data_np)
         # Export to csv
-        #data_x_df.to_csv('data_y_raw_vascular.csv', index=False)
+        # data_x_df.to_csv('data_y_raw_vascular.csv', index=False)
 
         # 2 - Convert relative positions to classes
 
