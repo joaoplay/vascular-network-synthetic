@@ -195,6 +195,8 @@ class GraphSeq2Seq(nn.Module):
             # Filter out all padding paths
             sample = sample[non_padding_paths]
 
+            print(sample.shape)
+
             encoder_hidden = self.encoder.init_hidden(sample.size(0)).to(device=self.device)
 
             # Encode paths and aggregate hidden states. The hidden states are summed!

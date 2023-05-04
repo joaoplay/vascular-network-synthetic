@@ -77,9 +77,6 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         # Pick an unvisited node. This is the node to be expanded.
         current_node_id = unvisited_nodes.pop(0)
 
-        # Get number of neighbors of the current node.
-        print("Number of neighbours: ", len(list(generated_graph.neighbors(current_node_id))))
-
         # Perform random walks from the current node and generate the encoded input paths
         x, _ = generate_training_samples_for_node(generated_graph, current_node_id, max_input_paths,
                                                   max_paths_for_each_reachable_node, max_input_path_length,
