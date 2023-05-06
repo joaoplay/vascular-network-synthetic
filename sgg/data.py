@@ -31,7 +31,9 @@ def generate_training_samples_for_node(graph: nx.Graph, node_id: int, max_input_
                                                 max_input_path_length=max_input_path_length,
                                                 distance_function=distance_function)
 
-    #training_example = [training_sequence[np.random.randint(len(training_sequence))]]
+    print("Training sequence length: ", len(training_sequence))
+
+    # training_example = [training_sequence[np.random.randint(len(training_sequence))]]
     training_example = [training_sequence[0]]
 
     x, y = encode_training_sequence(training_sequence=training_example,
