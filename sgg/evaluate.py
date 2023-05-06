@@ -76,6 +76,10 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         # Pick an unvisited node. This is the node to be expanded.
         current_node_id = unvisited_nodes.pop(0)
 
+        # Raise exception if the current node is not in the graph or is isolated.
+        if current_node_id not in generated_graph.nodes or nx.degree(generated_graph, current_node_id) == 0:
+            raise Exception("The current node is not in the graph or is isolated.")
+
         # Perform random walks from the current node and generate the encoded input paths
         x, _ = generate_training_samples_for_node(generated_graph, current_node_id, max_input_paths,
                                                   max_paths_for_each_reachable_node, max_input_path_length,

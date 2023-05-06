@@ -135,8 +135,6 @@ def generate_paths_for_node(graph: nx.graph, node_id: int, max_input_paths: int,
                                            max_paths_for_each_reachable_node=max_paths_for_each_reachable_node,
                                            max_input_path_length=max_input_path_length)
 
-    #print(paths)
-
     # Find all unique prediction nodes and put them into individual arrays. This must be done as paths
     # predicting separate nodes must be passed in differently.
     unique_nodes = list()
