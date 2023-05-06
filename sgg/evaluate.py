@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Any
 
 import networkx as nx
@@ -106,7 +105,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                 nodes_list = list(generated_graph.nodes)
                 # Remove the current node from the list of nodes, so that we don't check if the new node is close to
                 # itself.
-                nodes_list.pop(current_node_id)
+                nodes_list.pop(current_node_index)
 
                 # Get the coordinates of the current node.
                 current_node_coord = torch.tensor(np.array(generated_graph.nodes[current_node_id]['node_label']),
