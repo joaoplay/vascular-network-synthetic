@@ -116,8 +116,6 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
         if len(sequence) > max_input_paths:
             break
 
-    print("Sequence: ", sequence)
-
     return sequence
 
 
@@ -200,7 +198,6 @@ def generate_training_data_for_graph(graph: nx.graph, max_input_paths_per_node: 
     nodes_to_process = len(graph.nodes())
     all_paths_nodes = []
     for idx in range(num_iterations):
-        print(f"Generating training data for iteration {idx + 1} of {num_iterations}")
         for node_id in graph.nodes():
             training_data, training_data_nodes = generate_paths_for_node(graph=graph, node_id=node_id,
                                                                          max_input_paths=max_input_paths_per_node,
@@ -223,12 +220,8 @@ def generate_training_data_for_graph(graph: nx.graph, max_input_paths_per_node: 
     # Vertically stack all paths
     all_paths_nodes = np.vstack(all_paths_nodes)
 
-    print(all_paths_nodes.shape)
-
     # Filter out all duplicated paths and return the indices of the unique ones
     unique_paths, unique_indices = np.unique(all_paths_nodes, axis=0, return_index=True)
-
-    print(unique_paths.shape)
 
     return training_data
 

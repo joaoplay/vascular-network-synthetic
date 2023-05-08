@@ -64,6 +64,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     """
 
     # Copy generated graph from seed graph, so that we don't modify the seed graph.
+
     generated_graph = seed_graph.copy()
 
     # Get the greatest node index in the graph to avoid overwriting existing nodes.
@@ -75,10 +76,6 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     for i in range(num_iterations):
         # Pick an unvisited node. This is the node to be expanded.
         current_node_id = unvisited_nodes.pop(0)
-
-        # Raise exception if the current node is not in the graph or is isolated.
-        if current_node_id not in generated_graph.nodes or nx.degree(generated_graph, current_node_id) == 0:
-            raise Exception("The current node is not in the graph or is isolated.")
 
         # Perform random walks from the current node and generate the encoded input paths
         x, _ = generate_training_samples_for_node(generated_graph, current_node_id, max_input_paths,
@@ -95,11 +92,11 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         # Convert relative coordinates to categorical features
         x = categorical_coordinates_encoder.transform(x).unsqueeze(0)
 
+        # print(torch.sum(x))
+
         # Call model to generate new nodes from previously codified paths
         predicted_nodes = graph_seq_2_seq.generate(x)
 
-        current_node_index = list(generated_graph.nodes).index(current_node_id)
-        nodes_to_ignore = [current_node_index]
         for new_node in predicted_nodes:
             # Transform from classes to coordinates
             decoded_new_node = categorical_coordinates_encoder.inverse_transform(new_node)
@@ -109,6 +106,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                 nodes_list = list(generated_graph.nodes)
                 # Remove the current node from the list of nodes, so that we don't check if the new node is close to
                 # itself.
+                current_node_index = nodes_list.index(current_node_id)
                 nodes_list.pop(current_node_index)
 
                 # Get the coordinates of the current node.
@@ -125,7 +123,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
                 # Remove the coordinates of the current node from the list of coordinates.
                 start_node_idx = torch.tensor(
-                    [i for i in range(current_graph_coordinates.shape[0]) if i not in nodes_to_ignore], device=device)
+                    [i for i in range(current_graph_coordinates.shape[0]) if i != current_node_index], device=device)
                 current_graph_coordinates = torch.index_select(current_graph_coordinates, 0, start_node_idx)
 
                 # Calculate the distance between the new node to every other node in the graph (except the current
@@ -148,7 +146,6 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     generated_graph.add_node(new_node_id, node_label=next_node_coord.tolist())
                     generated_graph.add_edge(current_node_id, new_node_id)
                     unvisited_nodes.append(new_node_id)
-                    nodes_to_ignore.append(list(generated_graph.nodes).index(new_node_id))
             else:
                 break
 
