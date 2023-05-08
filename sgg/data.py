@@ -78,6 +78,10 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
     """
     # Get all nodes reachable from the node_id whose distance is less than max_input_path_length
     all_reachable_nodes = list(single_source_shortest_path(graph, node_id, max_input_path_length))
+
+    # Print total number of reachable nodes
+    print("# reachable nodes: ", len(all_reachable_nodes))
+
     # Remove the node_id from the reachable nodes
     all_reachable_nodes = list(filter(lambda a: a != node_id, all_reachable_nodes))
     # Introduce randomness
