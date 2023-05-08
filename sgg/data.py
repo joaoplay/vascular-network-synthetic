@@ -373,8 +373,6 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
                 "Error: The training sequence has too many paths! The number of paths must be shortened to "
                 "max_num_previous_paths.")
 
-        print("Paths to encode: ", paths)
-
         path_index = 0
         # FIXME: Change it to enumerate
         for path in paths:
