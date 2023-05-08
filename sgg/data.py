@@ -79,9 +79,6 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
     # Get all nodes reachable from the node_id whose distance is less than max_input_path_length
     all_reachable_nodes = list(single_source_shortest_path(graph, node_id, max_input_path_length))
 
-    # Print total number of reachable nodes
-    print("# reachable nodes: ", len(all_reachable_nodes))
-
     # Remove the node_id from the reachable nodes
     all_reachable_nodes = list(filter(lambda a: a != node_id, all_reachable_nodes))
     # Introduce randomness
@@ -119,6 +116,8 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
         if len(sequence) > max_input_paths:
             break
 
+    print("Sequence: ", sequence)
+
     return sequence
 
 
@@ -138,8 +137,6 @@ def generate_paths_for_node(graph: nx.graph, node_id: int, max_input_paths: int,
     paths = get_all_simple_paths_from_node(graph=graph, node_id=node_id, max_input_paths=max_input_paths,
                                            max_paths_for_each_reachable_node=max_paths_for_each_reachable_node,
                                            max_input_path_length=max_input_path_length)
-
-    print("Number of paths: ", len(paths))
 
     # Find all unique prediction nodes and put them into individual arrays. This must be done as paths
     # predicting separate nodes must be passed in differently.
