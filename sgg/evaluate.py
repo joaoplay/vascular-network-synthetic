@@ -128,7 +128,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
                 # Calculate the distance between the new node to every other node in the graph (except the current
                 # active one)
-                dist = torch.cdist(next_node_coord.unsqueeze(0), current_graph_coordinates)
+                dist = torch.nn.functional.pairwise_distance(next_node_coord.unsqueeze(0), current_graph_coordinates)
 
                 if torch.min(dist) <= max_loop_distance:
                     established_loops += 1
