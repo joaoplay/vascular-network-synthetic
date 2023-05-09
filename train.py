@@ -71,7 +71,7 @@ def train_model(cfg: DictConfig):
 
     # The weight of each class is used to balance the loss function. Most of the neighboring nodes are close to
     # each other, resulting in a high number of transitions close to 0.
-    class_weights = compute_class_weights(data_y, cfg.num_classes)
+    class_weights = compute_class_weights(data_y, cfg.num_classes + 1)
     # Compute node degree statistics for the original training graph. This is important to later compare with
     # the synthetic graphs. The corresponding graphs are logged to wandb.
     training_graph_degree_analysis = degree_analysis(nx_graph=training_graph)
