@@ -66,7 +66,9 @@ class GraphSeq2SeqTrainer:
         # penalize the loss function for the underrepresented classes.
         class_weights = class_weights.to(device=device) if class_weights is not None else None
 
-        self.loss = nn.CrossEntropyLoss(ignore_index=ignore_index)
+        print("class_weights", class_weights)
+
+        self.loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=class_weights)
         self.max_iters = max_iters
         self.device = device
 
