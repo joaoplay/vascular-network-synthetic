@@ -232,6 +232,10 @@ def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_gra
     # Average edge length of the ground truth graph
     ground_truth_mean_distance, ground_truth_std_distance = edge_length_mean_and_std(ground_truth_graph)
 
+    # Calculate the difference of density between the generated graph and the ground truth graph
+    generated_graph_density = nx.density(generated_graph)
+    ground_truth_graph_density = nx.density(ground_truth_graph)
+
     # Return dict with evaluation metrics
     return {
         'metrics': {
@@ -239,6 +243,7 @@ def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_gra
             'average_distance_between_neighbors_difference': generated_mean_distance - ground_truth_mean_distance,
             'standard_deviation_clustering_coefficient_difference': generated_graph_clustering_coefficient_std - ground_truth_graph_clustering_coefficient_std,
             'standard_deviation_distance_between_neighbors_difference': generated_std_distance - ground_truth_std_distance,
+            'density_difference': generated_graph_density - ground_truth_graph_density,
             'number_of_nodes_difference': len(generated_graph.nodes) - len(ground_truth_graph.nodes),
         },
         'plots': {
