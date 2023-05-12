@@ -4,10 +4,12 @@ import networkx as nx
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from nodevectors import GGVec
 
 from sgg.data import generate_training_samples_for_node
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
+from utils.embedding import calculate_embedding_representation
 
 
 def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
@@ -201,7 +203,6 @@ def degree_analysis(nx_graph: nx.Graph):
 
     return fig, ax
 
-
 def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_graph: nx.Graph) -> dict[str, float | Any]:
     """
     Compute the evaluation metric for the generated graph. Compare the average degree of the generated graph with the
@@ -236,6 +237,11 @@ def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_gra
     generated_graph_density = nx.density(generated_graph)
     ground_truth_graph_density = nx.density(ground_truth_graph)
 
+    # Calculate embedding representation of the generated graph
+    generated_graph_embed = calculate_embedding_representation(generated_graph)
+    # Calculate embedding representation of the ground truth graph
+    ground_truth_graph_embed = calculate_embedding_representation(ground_truth_graph)
+
     # Return dict with evaluation metrics
     return {
         'metrics': {
@@ -245,6 +251,7 @@ def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_gra
             'standard_deviation_distance_between_neighbors_difference': generated_std_distance - ground_truth_std_distance,
             'density_difference': generated_graph_density - ground_truth_graph_density,
             'number_of_nodes_difference': len(generated_graph.nodes) - len(ground_truth_graph.nodes),
+            'embedding_distance': np.linalg.norm(generated_graph_embed - ground_truth_graph_embed),
         },
         'plots': {
             'generated_graph_degree_analysis': generated_graph_degree_analysis[0],
