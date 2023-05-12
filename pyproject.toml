@@ -21,7 +21,7 @@ torch-sparse = [
 torch-cluster = [
     {url = "https://data.pyg.org/whl/torch-1.13.0%2Bcu117/torch_cluster-1.6.0%2Bpt113cu117-cp310-cp310-linux_x86_64.whl", markers = "sys_platform == 'linux'"}
 ]
-networkx = "^3.0"
+networkx = "==2.8.8"
 numpy = "^1.24.1"
 wandb = "^0.13.9"
 plotly = "^5.12.0"
