@@ -1,7 +1,6 @@
 import os
 
 import hydra
-import pandas as pd
 import torch
 import wandb
 from omegaconf import DictConfig
@@ -16,7 +15,7 @@ from sgg.model import GraphSeq2Seq
 from sgg.trainer import GraphSeq2SeqTrainer, ON_BATCH_END
 from utils.torch import compute_class_weights
 from utils.util import set_seed, create_directory
-from vascular_network.dataset_generation import generate_training_graph_legacy
+from vascular_network.dataset_generation import generate_training_graph_legacy, generate_training_graph
 
 
 @hydra.main(config_path="configs", config_name="default_config", version_base="1.2")
@@ -50,7 +49,7 @@ def train_model(cfg: DictConfig):
     device = torch.device(cfg.trainer.device)
 
     # Generate a training graph from VesselGraph
-    training_graph, _ = generate_training_graph_legacy(OUTPUT_PATH)
+    training_graph, _ = generate_training_graph(OUTPUT_PATH)
 
     # Override max output nodes to be the maximum between the config and the maximum degree across all
     # nodes in the graph
