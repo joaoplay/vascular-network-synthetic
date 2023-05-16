@@ -1,5 +1,4 @@
 import vtk
-import networkx as nx
 import numpy as np
 
 from settings import OUTPUT_PATH
@@ -58,6 +57,7 @@ window.AddRenderer(renderer)
 interactor = vtk.vtkRenderWindowInteractor()
 interactor.SetRenderWindow(window)
 
+
 # Define the function to add a new node and edge to the graph
 def add_node_and_edge():
     # Generate a random position for the new node
@@ -86,6 +86,7 @@ def add_node_and_edge():
 
     # Refresh the window
     window.Render()
+
 
 timer_id = interactor.CreateRepeatingTimer(200)
 interactor.AddObserver(vtk.vtkCommand.TimerEvent, lambda obj, event: add_node_and_edge())

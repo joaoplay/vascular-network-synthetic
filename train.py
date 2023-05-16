@@ -15,7 +15,7 @@ from sgg.model import GraphSeq2Seq
 from sgg.trainer import GraphSeq2SeqTrainer, ON_BATCH_END
 from utils.torch import compute_class_weights
 from utils.util import set_seed, create_directory
-from vascular_network.dataset_generation import generate_training_graph_legacy, generate_training_graph
+from vascular_network.dataset_generation import generate_training_graph
 
 
 @hydra.main(config_path="configs", config_name="default_config", version_base="1.2")
@@ -87,15 +87,16 @@ def train_model(cfg: DictConfig):
     trainer = GraphSeq2SeqTrainer(model=model, train_dataset=dataset, graph=training_graph,
                                   distance_function=get_signed_distance_between_nodes,
                                   categorical_coordinates_encoder=cat_coordinates_encoder,
-                                  class_weights=class_weights, ignore_index=cfg.num_classes, **cfg.evaluator, **cfg.paths,
+                                  class_weights=class_weights, ignore_index=cfg.num_classes, **cfg.evaluator,
+                                  **cfg.paths,
                                   **cfg.trainer)
 
     # Add a set of callbacks to: print the training loss; generate a synthetic graph and perform a comparison
     # with the validation data; save the model to a checkpoint file.
     trainer.add_callback(ON_BATCH_END, log_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
     trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters)
-    # trainer.add_callback(ON_BATCH_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,
-    #                      checkpoint_save_path=checkpoints_dir)
+    trainer.add_callback(ON_BATCH_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,
+                         checkpoint_save_path=checkpoints_dir)
 
     print(f'Training model: {cfg.run_name} on device: {device}...')
     # Train the model
