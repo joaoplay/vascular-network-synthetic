@@ -29,7 +29,7 @@ def train_model(cfg: DictConfig):
     :return:
     """
     # Don't forget to set WANDB_API_KEY environment variable. This is required for wandb to work.
-    wandb.init(project=WANDB_PROJECT_NAME, name=cfg.run_name)
+    wandb.init(project=WANDB_PROJECT_NAME, name=cfg.run_name, tags=cfg.tags)
 
     # Set the run output path
     run_output_dir = os.path.join(RUNS_PATH, cfg.run_name.lower().replace(' ', '_'))

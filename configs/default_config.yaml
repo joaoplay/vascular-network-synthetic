@@ -1,4 +1,5 @@
 run_name: test_run # Name of the run. Used to create a folder to save the checkpoints and logs
+tags: null # Tags to be used for logging
 defaults:
   - paths: paths_4_2_7_10
   - trainer: trainer_1
