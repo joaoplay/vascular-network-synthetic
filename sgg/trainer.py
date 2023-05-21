@@ -4,6 +4,7 @@ from typing import Callable, Dict, Optional
 import networkx as nx
 import pandas as pd
 import torch
+from matplotlib import pyplot as plt
 from networkx import Graph
 from torch import optim, nn
 from torch.utils.data import Dataset, DataLoader
@@ -142,16 +143,16 @@ class GraphSeq2SeqTrainer:
         seed_graph = nx.Graph(seed_graph)
 
         # Generate a synthetic graph from the previously obtained seed.
-        synth_graph = generate_synthetic_graph(seed_graph=seed_graph, unvisited_nodes=unvisited_nodes,
-                                               graph_seq_2_seq=self.model,
-                                               categorical_coordinates_encoder=self.categorical_coordinates_encoder,
-                                               max_input_paths=self.max_input_paths,
-                                               max_paths_for_each_reachable_node=self.max_paths_for_each_reachable_node,
-                                               max_input_path_length=self.max_input_path_length,
-                                               max_output_nodes=self.max_output_nodes,
-                                               distance_function=self.distance_function,
-                                               num_iterations=self.synthetic_graph_gen_iterations,
-                                               max_loop_distance=self.max_loop_distance, device=self.device)
+        synth_graph, steps = generate_synthetic_graph(seed_graph=seed_graph, unvisited_nodes=unvisited_nodes,
+                                                      graph_seq_2_seq=self.model,
+                                                      categorical_coordinates_encoder=self.categorical_coordinates_encoder,
+                                                      max_input_paths=self.max_input_paths,
+                                                      max_paths_for_each_reachable_node=self.max_paths_for_each_reachable_node,
+                                                      max_input_path_length=self.max_input_path_length,
+                                                      max_output_nodes=self.max_output_nodes,
+                                                      distance_function=self.distance_function,
+                                                      num_iterations=self.synthetic_graph_gen_iterations,
+                                                      max_loop_distance=self.max_loop_distance, device=self.device)
 
         synth_graph = nx.convert_node_labels_to_integers(synth_graph, label_attribute='old_label')
         fig1 = draw_3d_graph(synth_graph)
@@ -164,7 +165,7 @@ class GraphSeq2SeqTrainer:
         metrics['plots']['synthetic_graph'] = fig1
         metrics['plots']['seed_graph'] = fig2
 
-        return metrics
+        return metrics, steps
 
     def add_callback(self, on_event: str, callback: Callable, *args, **kwargs):
         """
@@ -175,6 +176,7 @@ class GraphSeq2SeqTrainer:
         :param kwargs:
         :return:
         """
+
         # This is wrapped to allow the callback to receive additional arguments when adding to the trainer.
         def wrapped_callback(*cb_args, **cb_kwargs):
             return callback(*cb_args, *args, **cb_kwargs, **kwargs)

@@ -15,7 +15,7 @@ def evaluate_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
     if trainer.iter_num % every_n_iters == 0:
         print(f'Evaluating model at iteration: {trainer.iter_num}...')
 
-        metrics = trainer.evaluate()
+        metrics, _ = trainer.evaluate()
         print(f'Validation metrics: {metrics["metrics"]}')
         # Log validation metrics to wandb
         wandb.log(metrics['metrics'])

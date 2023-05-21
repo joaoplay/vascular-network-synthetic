@@ -37,14 +37,17 @@ def evaluate_model(cfg: DictConfig):
 
     # Init a trainer for the GraphSeq2Seq model. We don't specify a train dataset nor class weights because we are
     # using the trainer only for evaluation purposes.
+    # Init a trainer for the GraphSeq2Seq model
     trainer = GraphSeq2SeqTrainer(model=model, train_dataset=None, graph=training_graph,
                                   distance_function=get_signed_distance_between_nodes,
                                   categorical_coordinates_encoder=cat_coordinates_encoder,
-                                  class_weights=None, **cfg.evaluator, **cfg.paths, **cfg.trainer)
+                                  class_weights=None, ignore_index=cfg.num_classes, **cfg.evaluator,
+                                  **cfg.paths,
+                                  **cfg.trainer)
 
     trainer.load_checkpoint(os.path.join(OUTPUT_PATH, 'models', 'default_pretrained.pt'))
 
-    trainer.evaluate()
+    _, steps = trainer.evaluate()
 
 
 if __name__ == '__main__':

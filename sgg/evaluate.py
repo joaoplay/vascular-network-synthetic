@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 
 import networkx as nx
 import numpy as np
@@ -46,7 +46,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                              categorical_coordinates_encoder: CategoricalCoordinatesEncoder,
                              unvisited_nodes: list[int], num_iterations: int, max_input_paths: int,
                              max_paths_for_each_reachable_node: int, max_input_path_length: int, max_output_nodes: int,
-                             distance_function: callable, max_loop_distance: float, device) -> nx.Graph:
+                             distance_function: callable, max_loop_distance: float, device) -> (nx.Graph, List):
     """
     Generates a synthetic graph using a trained encoder and decoder model. New nodes and edges are added sequentially,
     starting from the seed graph.
@@ -61,6 +61,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     :param max_output_nodes: Maximum number of output nodes to generate.
     :param distance_function: Distance function to use for calculating the distance between nodes.
     :param max_loop_distance:
+    :param return_steps: Whether to return the intermediate steps of the generation process.
     :param device:
     :return:
     """
@@ -73,6 +74,8 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
     established_loops = 0
     new_nodes = 0
+
+    steps = []
 
     for i in range(num_iterations):
         # Pick an unvisited node. This is the node to be expanded.
@@ -92,8 +95,6 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
         # Convert relative coordinates to categorical features
         x = categorical_coordinates_encoder.transform(x).unsqueeze(0)
-
-        # print(torch.sum(x))
 
         # Call model to generate new nodes from previously codified paths
         predicted_nodes = graph_seq_2_seq.generate(x)
@@ -138,6 +139,8 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     loop_node_index = torch.argmin(dist).item()
                     loop_node_id = list(nodes_list)[loop_node_index]
                     generated_graph.add_edge(current_node_id, loop_node_id)
+
+                    steps += [(current_node_id, loop_node_id, None)]
                 else:
                     new_nodes += 1
                     # Otherwise, add a new node and an edge between the current node and the new node.
@@ -147,6 +150,8 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     generated_graph.add_node(new_node_id, node_label=next_node_coord.tolist())
                     generated_graph.add_edge(current_node_id, new_node_id)
                     unvisited_nodes.append(new_node_id)
+
+                    steps += [(current_node_id, new_node_id, next_node_coord.tolist())]
             else:
                 break
 
@@ -154,7 +159,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
             # No more unvisited nodes. Stop the generation process.
             break
 
-    return generated_graph
+    return generated_graph, steps
 
 
 def edge_length_mean_and_std(graph: nx.Graph) -> (float, float):
