@@ -58,7 +58,7 @@ def train_model(cfg: DictConfig):
 
     # Override max output nodes to be the maximum between the config and the maximum degree across all
     # nodes in the graph
-    # cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
+    cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
 
     # Create a GraphDataGenerator responsible for generating the sequential training data from a graph.
     graph_data_generator = GraphDataGenerator(graph=training_graph, root_dir=preprocessed_data_dir,
