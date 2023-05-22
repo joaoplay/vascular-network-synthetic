@@ -1,7 +1,7 @@
 import os
 
 OUTPUT_PATH = os.getenv("OUTPUT_PATH", "./files")
-RUNS_PATH = os.path.join(OUTPUT_PATH, 'runs')
+MODELS_DIR_NAME = 'models'
 CHECKPOINTS_DIR_NAME = 'checkpoints'
 PROCESSED_DATA_DIR_NAME = 'processed_data'
 

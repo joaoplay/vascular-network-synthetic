@@ -3,10 +3,11 @@ import os
 import hydra
 import torch
 import wandb
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import TensorDataset
 
-from settings import OUTPUT_PATH, RUNS_PATH, CHECKPOINTS_DIR_NAME, PROCESSED_DATA_DIR_NAME, WANDB_PROJECT_NAME
+from settings import OUTPUT_PATH, CHECKPOINTS_DIR_NAME, PROCESSED_DATA_DIR_NAME, WANDB_PROJECT_NAME, \
+    MODELS_DIR_NAME
 from sgg.callbacks import evaluate_callback, save_checkpoint_callback, log_loss_callback
 from sgg.data import get_signed_distance_between_nodes
 from sgg.evaluate import degree_analysis
@@ -28,18 +29,22 @@ def train_model(cfg: DictConfig):
     :param cfg:
     :return:
     """
+    # This is a hack. Somehow hydra is not setting the working directory to the output directory.
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
+    hydra_cwd = hydra_cfg['runtime']['output_dir']
+
     # Don't forget to set WANDB_API_KEY environment variable. This is required for wandb to work.
-    wandb.init(project=WANDB_PROJECT_NAME, name=cfg.run_name, tags=cfg.tags)
+    wandb.init(project=WANDB_PROJECT_NAME, name=cfg.run_name, tags=cfg.tags, config=OmegaConf.to_container(cfg,
+                                                                                                           resolve=True))
 
     # Set the run output path
-    run_output_dir = os.path.join(RUNS_PATH, cfg.run_name.lower().replace(' ', '_'))
-    checkpoints_dir = os.path.join(run_output_dir, f'{CHECKPOINTS_DIR_NAME}/')
+    models_output_dir = os.path.join(hydra_cwd, MODELS_DIR_NAME)
+    checkpoints_dir = os.path.join(hydra_cwd, CHECKPOINTS_DIR_NAME)
     preprocessed_data_dir = os.path.join(OUTPUT_PATH, f'{PROCESSED_DATA_DIR_NAME}/')
 
     # Create directories
     create_directory(OUTPUT_PATH)
-    create_directory(RUNS_PATH)
-    create_directory(run_output_dir)
+    create_directory(models_output_dir)
     create_directory(checkpoints_dir)
     create_directory(preprocessed_data_dir)
 
@@ -53,8 +58,7 @@ def train_model(cfg: DictConfig):
 
     # Override max output nodes to be the maximum between the config and the maximum degree across all
     # nodes in the graph
-    # FIXME: Reactivate it ASAP
-    # cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
+    cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
 
     # Create a GraphDataGenerator responsible for generating the sequential training data from a graph.
     graph_data_generator = GraphDataGenerator(graph=training_graph, root_dir=preprocessed_data_dir,
