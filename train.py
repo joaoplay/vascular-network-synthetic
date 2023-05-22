@@ -58,7 +58,7 @@ def train_model(cfg: DictConfig):
 
     # Override max output nodes to be the maximum between the config and the maximum degree across all
     # nodes in the graph
-    cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
+    # cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
 
     # Create a GraphDataGenerator responsible for generating the sequential training data from a graph.
     graph_data_generator = GraphDataGenerator(graph=training_graph, root_dir=preprocessed_data_dir,
@@ -69,8 +69,14 @@ def train_model(cfg: DictConfig):
 
     # Load or generate data. Apart from the data, the corresponding categorical coordinates encoder is returned.
     # It will be necessary to generate new predictions and evaluate the model.
-    data_x, data_y, cat_coordinates_encoder = graph_data_generator.load() if cfg.load_preprocessed_data else \
-        graph_data_generator.generate()
+    if cfg.force_rebuild_data:
+        data_x, data_y, cat_coordinates_encoder = graph_data_generator.generate()
+    else:
+        try:
+            data_x, data_y, cat_coordinates_encoder = graph_data_generator.load()
+        except FileNotFoundError:
+            print('Data not found. Generating new data.')
+            data_x, data_y, cat_coordinates_encoder = graph_data_generator.generate()
 
     # The weight of each class is used to balance the loss function. Most of the neighboring nodes are close to
     # each other, resulting in a high number of transitions close to 0.
