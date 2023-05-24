@@ -112,6 +112,8 @@ def train_model(cfg: DictConfig):
     # Train the model
     trainer.train()
 
+    wandb.finish()
+
 
 if __name__ == '__main__':
     train_model()
