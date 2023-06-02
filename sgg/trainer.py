@@ -9,7 +9,8 @@ from networkx import Graph
 from torch import optim, nn
 from torch.utils.data import Dataset, DataLoader
 
-from sgg.evaluate import get_starting_map, generate_synthetic_graph, compute_graph_comparison_metrics
+from sgg.evaluate import get_starting_map, generate_synthetic_graph, compute_graph_comparison_metrics, \
+    reset_subgraph_indexes
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.visualize import draw_3d_graph
@@ -140,7 +141,6 @@ class GraphSeq2SeqTrainer:
         """
         # Get a seed from the graph and considering a maximum starting_seed_depth
         seed_graph, unvisited_nodes = get_starting_map(self.graph, depth=self.seed_graph_depth)
-        seed_graph = nx.Graph(seed_graph)
 
         # Generate a synthetic graph from the previously obtained seed.
         synth_graph, steps = generate_synthetic_graph(seed_graph=seed_graph, unvisited_nodes=unvisited_nodes,
@@ -164,6 +164,8 @@ class GraphSeq2SeqTrainer:
         metrics = compute_graph_comparison_metrics(synth_graph, self.graph)
         metrics['plots']['synthetic_graph'] = fig1
         metrics['plots']['seed_graph'] = fig2
+
+        print(steps)
 
         return metrics, steps
 

@@ -1,3 +1,5 @@
+import random
+from copy import deepcopy
 from typing import Any, List
 
 import networkx as nx
@@ -12,6 +14,23 @@ from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.embedding import calculate_embedding_representation
 
 
+def random_subgraph(graph, max_depth):
+    # Select a random starting node from the graph
+    start_node = random.choice(list(graph.nodes()))
+
+    # Generate the ego graph with the specified maximum depth
+    subgraph = nx.ego_graph(graph, start_node, radius=max_depth)
+
+    return subgraph
+
+
+def reset_subgraph_indexes(subgraph):
+    mapping = {node: idx for idx, node in enumerate(subgraph.nodes())}
+    relabeled_subgraph = nx.relabel_nodes(subgraph, mapping)
+
+    return relabeled_subgraph
+
+
 def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
     """Get a starting map to begin the generation of synthetic graphs.
 
@@ -23,7 +42,6 @@ def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
     Returns:
         networkx.Graph, list: A graph which contains some starting nodes, with cartesian coordinates; the list of unvisited nodes.
     """
-
     if start_node_id is None:
         start_node_id = min(graph.nodes)
 
@@ -34,6 +52,7 @@ def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
 
     # Get the partial representation of the graph.
     starting_map = nx.subgraph(graph, nodes)
+    starting_map = reset_subgraph_indexes(starting_map)
 
     # Determine the unvisited nodes. These are the nodes that have a degree of 1.
     unvisited_nodes = [node_idx for node_idx in starting_map.nodes() if nx.degree(starting_map, node_idx) == 1]
@@ -206,6 +225,7 @@ def degree_analysis(nx_graph: nx.Graph):
     ax[1].set_xlabel("Rank")
 
     return fig, ax
+
 
 def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_graph: nx.Graph) -> dict[str, float | Any]:
     """

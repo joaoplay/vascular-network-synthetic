@@ -60,6 +60,9 @@ def train_model(cfg: DictConfig):
     # nodes in the graph
     cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
 
+    # Calculate average node degree
+    avg_node_degree = sum([training_graph.degree(node) for node in training_graph.nodes()]) / len(training_graph.nodes())
+
     # Create a GraphDataGenerator responsible for generating the sequential training data from a graph.
     graph_data_generator = GraphDataGenerator(graph=training_graph, root_dir=preprocessed_data_dir,
                                               distance_function=get_signed_distance_between_nodes,
