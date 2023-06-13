@@ -13,7 +13,7 @@ from sgg.data import get_signed_distance_between_nodes
 from sgg.evaluate import degree_analysis
 from sgg.graph_data_generator import GraphDataGenerator
 from sgg.model import GraphSeq2Seq
-from sgg.trainer import GraphSeq2SeqTrainer, ON_BATCH_END
+from sgg.trainer import GraphSeq2SeqTrainer, ON_BATCH_END, ON_TRAIN_END
 from utils.torch import compute_class_weights
 from utils.util import set_seed, create_directory
 from vascular_network.dataset_generation import generate_training_graph
@@ -108,7 +108,7 @@ def train_model(cfg: DictConfig):
     # with the validation data; save the model to a checkpoint file.
     trainer.add_callback(ON_BATCH_END, log_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
     trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters)
-    trainer.add_callback(ON_BATCH_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,
+    trainer.add_callback(ON_TRAIN_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,
                          checkpoint_save_path=checkpoints_dir)
 
     print(f'Training model: {cfg.run_name} on device: {device}...')

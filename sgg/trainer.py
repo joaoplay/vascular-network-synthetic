@@ -17,6 +17,7 @@ from utils.visualize import draw_3d_graph
 
 # Macros for available callbacks
 ON_BATCH_END = 'on_batch_end'
+ON_TRAIN_END = 'on_train_end'
 
 
 class GraphSeq2SeqTrainer:
@@ -132,6 +133,8 @@ class GraphSeq2SeqTrainer:
             # Increase iteration number
             self.iter_num += 1
 
+        self.trigger_callbacks(ON_TRAIN_END)
+
     @torch.no_grad()
     def evaluate(self):
         """
@@ -164,6 +167,8 @@ class GraphSeq2SeqTrainer:
         metrics = compute_graph_comparison_metrics(synth_graph, self.graph)
         metrics['plots']['synthetic_graph'] = fig1
         metrics['plots']['seed_graph'] = fig2
+
+        print(steps)
 
         return metrics, steps
 
