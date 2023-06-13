@@ -168,8 +168,6 @@ class GraphSeq2SeqTrainer:
         metrics['plots']['synthetic_graph'] = fig1
         metrics['plots']['seed_graph'] = fig2
 
-        print(steps)
-
         return metrics, steps
 
     def add_callback(self, on_event: str, callback: Callable, *args, **kwargs):
