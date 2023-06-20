@@ -33,7 +33,7 @@ def save_checkpoint_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, c
     :param checkpoint_save_path: The path to save the model
     :return:
     """
-    if trainer.iter_num % every_n_iters == 0:
+    if every_n_iters is not None and trainer.iter_num % every_n_iters == 0:
         print(f'Saving checkpoint at iteration: {trainer.iter_num}...')
         trainer.save_checkpoint(os.path.join(checkpoint_save_path, f'checkpoint_{trainer.iter_num}.pt'))
 
