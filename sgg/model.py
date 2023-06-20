@@ -224,9 +224,9 @@ class GraphSeq2Seq(nn.Module):
                 # The aggregated context is being passed to the decoder. The decoder input is ALWAYS the previous
                 # output
                 decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
-                # Select the most probable class
-                decoder_output = decoder_output.squeeze(0).softmax(dim=2)
-                indices = torch.topk(decoder_output, 1).indices
+                decoder_output = decoder_output.squeeze(0).softmax(dim=1)
+                # Sample from a multinomial distribution
+                indices = torch.multinomial(decoder_output.squeeze(0), 1)
                 decoder_input = indices.view(1, 1, 3)
                 all_decoder_outputs.append(indices.view(-1))
 
@@ -247,3 +247,4 @@ class GraphSeq2Seq(nn.Module):
         """
         Load encoder and decoder from a file
         """
+        pass
