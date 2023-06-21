@@ -385,6 +385,10 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
                     "Error: The input path is too long! The number of input paths must be shortened to "
                     "max_num_input_nodes.")
 
+            if len(path[1]) > max_output_nodes:
+                raise Exception(
+                    "The output path before padding is too long! The number of output nodes must be shortened.")
+
             # Pad prediction with empty tuples at the end to bring up the length to max_num_output_nodes.
             if len(path[1]) < max_output_nodes:
                 # Insert empty tuple at the end of first prediction.
