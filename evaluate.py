@@ -24,9 +24,6 @@ def evaluate_model(cfg: DictConfig):
     # Generate a training graph from VesselGraph
     training_graph, _ = generate_training_graph(OUTPUT_PATH)
 
-    # Calculate the average distance between nodes in the training graph
-
-
     # Override max output nodes to be the maximum between the config and the maximum degree across all
     # nodes in the graph
     cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])

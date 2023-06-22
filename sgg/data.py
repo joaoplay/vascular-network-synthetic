@@ -111,6 +111,8 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
             # 3. remove surrounding nodes contained in paths
             surrounding_nodes = list(filter(lambda a: a not in path, surrounding_nodes))
 
+            print(len(surrounding_nodes))
+
             sequence.append((surrounding_nodes, node_id, path))
 
         if len(sequence) > max_input_paths:

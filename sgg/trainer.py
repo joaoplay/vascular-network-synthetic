@@ -1,16 +1,12 @@
-import os
 from typing import Callable, Dict, Optional
 
 import networkx as nx
-import pandas as pd
 import torch
-from matplotlib import pyplot as plt
 from networkx import Graph
 from torch import optim, nn
 from torch.utils.data import Dataset, DataLoader
 
-from sgg.evaluate import get_starting_map, generate_synthetic_graph, compute_graph_comparison_metrics, \
-    reset_subgraph_indexes
+from sgg.evaluate import get_starting_map, generate_synthetic_graph, compute_graph_comparison_metrics
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.visualize import draw_3d_graph
