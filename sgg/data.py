@@ -1,7 +1,7 @@
 import random
 from typing import List, Tuple
 
-from networkx import single_source_shortest_path, all_simple_paths
+from networkx import single_source_shortest_path, all_simple_paths, neighbors
 
 from collections.abc import Callable
 
@@ -66,7 +66,8 @@ def convert_path_to_changes_in_distance(graph: nx.Graph, path: list,
 
 
 def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: int,
-                                   max_paths_for_each_reachable_node: int, max_input_path_length: int):
+                                   max_paths_for_each_reachable_node: int, max_input_path_length: int,
+                                   max_output_nodes: int):
     """
     Get all simple paths from a node in a graph.
     :param graph:
@@ -74,6 +75,7 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
     :param max_input_paths:
     :param max_paths_for_each_reachable_node:
     :param max_input_path_length:
+    :param
     :return:
     """
     # Get all nodes reachable from the node_id whose distance is less than max_input_path_length
@@ -99,10 +101,16 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
 
         for path in paths_from_start_node_id_to_reachable_node:
             # 2. Get all the surrounding nodes
-            surrounding_nodes = list(single_source_shortest_path(graph, node_id, 1))
+            #surrounding_nodes = list(single_source_shortest_path(graph, node_id, 1))
+
+            surrounding_nodes = list(neighbors(graph, node_id))
+
+            # Truncate surrounding nodes to max_output_nodes. Randomly select if there are more than max_output_nodes
+            if len(surrounding_nodes) > max_output_nodes:
+                surrounding_nodes = random.sample(surrounding_nodes, max_output_nodes)
 
             # Filter out start_node_id
-            surrounding_nodes = list(filter(lambda n_id: n_id != node_id, surrounding_nodes))
+            #surrounding_nodes = list(filter(lambda n_id: n_id != node_id, surrounding_nodes))
 
             # 3.1 remove any paths that cross over surrounding nodes twice.
             if len(set(surrounding_nodes) & set(path)) > 1:
@@ -110,8 +118,6 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
 
             # 3. remove surrounding nodes contained in paths
             surrounding_nodes = list(filter(lambda a: a not in path, surrounding_nodes))
-
-            print(len(surrounding_nodes))
 
             sequence.append((surrounding_nodes, node_id, path))
 
