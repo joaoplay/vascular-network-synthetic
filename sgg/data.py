@@ -29,7 +29,8 @@ def generate_training_samples_for_node(graph: nx.Graph, node_id: int, max_input_
                                                 max_input_paths=max_input_paths,
                                                 max_paths_for_each_reachable_node=max_paths_for_each_reachable_node,
                                                 max_input_path_length=max_input_path_length,
-                                                distance_function=distance_function)
+                                                distance_function=distance_function,
+                                                max_output_nodes=max_output_nodes)
 
     # training_example = [training_sequence[np.random.randint(len(training_sequence))]]
     training_example = [training_sequence[0]]
@@ -213,7 +214,8 @@ def generate_training_data_for_graph(graph: nx.graph, max_input_paths_per_node: 
                                                                          max_input_paths=max_input_paths_per_node,
                                                                          max_paths_for_each_reachable_node=max_paths_for_each_reachable_node,
                                                                          max_input_path_length=max_input_path_length,
-                                                                         distance_function=distance_function)
+                                                                         distance_function=distance_function,
+                                                                         max_output_nodes=max_output_nodes)
 
             # Convert to numpy array with shape (max_input_paths_per_node, max_input_path_length) and initialized to 0
             node_paths_np = np.zeros((len(training_data_nodes), max_input_paths_per_node, max_input_path_length + 1),

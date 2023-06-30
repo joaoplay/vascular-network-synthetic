@@ -141,7 +141,7 @@ def generate_paths_for_node(graph: nx.graph, node_id: int, max_input_paths: int,
 def generate_training_data_for_graph(graph: nx.graph, max_input_paths_per_node: int,
                                      max_paths_for_each_reachable_node: int, max_input_path_length: int,
                                      distance_function: Callable[[nx.Graph, int, int], List[float]],
-                                     num_iterations: int, max_output_nodes: int):
+                                     num_iterations: int):
     """
     Generate a training sequence given a Networkx. For each node in the graph, this method generates max_input_paths_per_node
     paths, each path with a maximum length of max_input_path_length. The max_paths_for_each_reachable_nodes controls the maximum
