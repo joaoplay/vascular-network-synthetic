@@ -128,7 +128,8 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
 
 
 def generate_paths_for_node(graph: nx.graph, node_id: int, max_input_paths: int, max_paths_for_each_reachable_node: int,
-                            max_input_path_length: int, distance_function: Callable[[nx.Graph, int, int], List[float]]):
+                            max_input_path_length: int, distance_function: Callable[[nx.Graph, int, int], List[float]],
+                            max_output_nodes: int):
     """
     Generate paths for a node.
     :param graph:
@@ -142,7 +143,8 @@ def generate_paths_for_node(graph: nx.graph, node_id: int, max_input_paths: int,
     # Get "max_num_paths_per_node" paths that can lead to node_id
     paths = get_all_simple_paths_from_node(graph=graph, node_id=node_id, max_input_paths=max_input_paths,
                                            max_paths_for_each_reachable_node=max_paths_for_each_reachable_node,
-                                           max_input_path_length=max_input_path_length)
+                                           max_input_path_length=max_input_path_length,
+                                           max_output_nodes=max_output_nodes)
 
     # Find all unique prediction nodes and put them into individual arrays. This must be done as paths
     # predicting separate nodes must be passed in differently.
