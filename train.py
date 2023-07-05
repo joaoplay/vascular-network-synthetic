@@ -101,15 +101,14 @@ def train_model(cfg: DictConfig):
                                   distance_function=get_signed_distance_between_nodes,
                                   categorical_coordinates_encoder=cat_coordinates_encoder,
                                   class_weights=class_weights, ignore_index=cfg.num_classes, **cfg.evaluator,
-                                  **cfg.paths,
-                                  **cfg.trainer)
+                                  **cfg.paths, **cfg.trainer)
 
     # Add a set of callbacks to: print the training loss; generate a synthetic graph and perform a comparison
     # with the validation data; save the model to a checkpoint file.
     trainer.add_callback(ON_BATCH_END, log_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
     trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters)
     trainer.add_callback(ON_TRAIN_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,
-                         checkpoint_save_path=checkpoints_dir)
+                         checkpoint_save_path=checkpoints_dir, save_checkpoint_at_the_end=cfg.save_checkpoint_at_the_end)
 
     print(f'Training model: {cfg.run_name} on device: {device}...')
     # Train the model

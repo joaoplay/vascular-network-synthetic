@@ -25,15 +25,17 @@ def evaluate_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
             wandb.log({f'{plot_label}': plot})
 
 
-def save_checkpoint_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, checkpoint_save_path: str):
+def save_checkpoint_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, checkpoint_save_path: str,
+                             save_checkpoint_at_the_end: bool = False):
     """
     This callback saves the model to a checkpoint file
     :param trainer: A GraphSeq2SeqTrainer model
     :param every_n_iters: How often to save the model
     :param checkpoint_save_path: The path to save the model
+    :param save_checkpoint_at_the_end: Whether to save the model at the end of training
     :return:
     """
-    if every_n_iters is not None and trainer.iter_num % every_n_iters == 0:
+    if save_checkpoint_at_the_end or (every_n_iters is not None and trainer.iter_num % every_n_iters == 0):
         print(f'Saving checkpoint at iteration: {trainer.iter_num}...')
         trainer.save_checkpoint(os.path.join(checkpoint_save_path, f'checkpoint_{trainer.iter_num}.pt'))
 
