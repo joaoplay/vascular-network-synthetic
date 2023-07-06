@@ -19,6 +19,6 @@ base_output_dir: . # Output directory
 hydra:
   sweep:
     dir: ${base_output_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    subdir: ${hydra.job.override_dirname}
+    subdir: ${hydra.job.id}
   run:
     dir: ${base_output_dir}/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
