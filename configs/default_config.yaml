@@ -1,11 +1,11 @@
 run_name: test_run # Name of the run. Used to create a folder to save the checkpoints and logs
 tags: null # Tags to be used for logging
 defaults:
-  - paths: paths_4_2_7_10
+  - paths: paths_4_2_5_10
   - trainer: trainer_1
   - evaluator: evaluator_1
   - model: model_1
-num_preprocessing_iterations: 100 # Determines how many times the preprocessing is run
+num_preprocessing_iterations: 200 # Determines how many times the preprocessing is run
 num_classes: 201 # Number of classes to discretize the relative coordinates. Note that 201 means that the relative
                  # coordinates are discretized into classes ranging [0, 200]
 remove_duplicates: true # If true, remove duplicate paths from the dataset
@@ -14,7 +14,7 @@ eval_every_n_iters: 100 # Evaluate the model every n iterations
 save_checkpoint_every_n_iters: null # Save a checkpoint every n iterations
 save_at_the_end: false # Save a checkpoint at the end of the training
 log_loss_every_n_iters: 100 # L the loss every n iterations
-seed: 42 # Random seed
+seed: 60 # Random seed
 base_output_dir: . # Output directory
 hydra:
   sweep:

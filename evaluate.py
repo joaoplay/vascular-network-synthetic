@@ -5,6 +5,7 @@ import hydra
 import numpy as np
 import torch
 import vtk
+from matplotlib import pyplot as plt
 from omegaconf import DictConfig
 
 from settings import OUTPUT_PATH, PROCESSED_DATA_DIR_NAME
@@ -13,6 +14,7 @@ from sgg.evaluate import get_starting_map, reset_subgraph_indexes, random_subgra
 from sgg.graph_data_generator import GraphDataGenerator
 from sgg.model import GraphSeq2Seq
 from sgg.trainer import GraphSeq2SeqTrainer
+from utils.util import set_seed
 from vascular_network.dataset_generation import generate_training_graph
 
 
@@ -20,6 +22,8 @@ from vascular_network.dataset_generation import generate_training_graph
 def evaluate_model(cfg: DictConfig):
     # Set device from the environment variable
     device = torch.device(cfg.trainer.device)
+
+    set_seed(cfg.seed, cfg.trainer.device)
 
     # Generate a training graph from VesselGraph
     training_graph, _ = generate_training_graph(OUTPUT_PATH)
@@ -53,13 +57,18 @@ def evaluate_model(cfg: DictConfig):
                                   **cfg.paths,
                                   **cfg.trainer)
 
-    trainer.load_checkpoint(os.path.join(OUTPUT_PATH, 'models', 'checkpoint_4000.pt'))
+    trainer.load_checkpoint(os.path.join(OUTPUT_PATH, 'models', '4_paths_5_length.pt'))
 
-    _, steps = trainer.evaluate()
+    # print(steps)
 
-    print(steps)
+    metrics, steps = trainer.evaluate()
 
-    # interactive_evaluation(steps, cfg.evaluator.seed_graph_depth)
+    degree_fig = metrics['plots']['generated_graph_degree_analysis']
+
+    plt.show()
+
+    #interactive_evaluation(steps, cfg.evaluator.seed_graph_depth)
+    interactive_evaluation([], cfg.evaluator.seed_graph_depth)
 
 
 def interactive_evaluation(steps, max_depth):
@@ -119,13 +128,13 @@ def interactive_evaluation(steps, max_depth):
     # Create a vtkActor object to define the properties of the 3D surface
     actor = vtk.vtkActor()
     actor.SetMapper(mapper)
-    actor.GetProperty().SetColor(0.0, 1.0, 0.0)
+    actor.GetProperty().SetColor(1.0, 0.0, 0.0)
     actor.GetProperty().SetOpacity(1.0)
 
     # Create a vtkRenderer object to display the actor
     renderer = vtk.vtkRenderer()
     renderer.AddActor(actor)
-    renderer.SetBackground(0.0, 0.0, 0.0)
+    renderer.SetBackground(1.0, 1.0, 1.0)
 
     # Create a vtkRenderWindow object to display the renderer
     window = vtk.vtkRenderWindow()

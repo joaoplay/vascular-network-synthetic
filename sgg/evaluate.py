@@ -217,12 +217,25 @@ def degree_analysis(nx_graph: nx.Graph):
     ax[0].set_title('Degree distribution')
     ax[0].set_xlabel('Degree')
     ax[0].set_ylabel('Number of nodes')
+    # Increase font size of the x and y ticks
+    ax[0].tick_params(axis='both', which='major', labelsize=12)
+    # Increase title font size
+    ax[0].title.set_fontsize(14)
+    # Increase tick label font size
+    ax[0].xaxis.label.set_fontsize(12)
+    ax[0].yaxis.label.set_fontsize(12)
 
     degree_sequence = sorted((d for n, d in nx_graph.degree()), reverse=True)  # degree sequence
     ax[1].plot(degree_sequence, "b-", marker="o")
     ax[1].set_title("Degree rank plot")
     ax[1].set_ylabel("Degree")
     ax[1].set_xlabel("Rank")
+    # Increase font size of the x and y ticks
+    ax[1].tick_params(axis='both', which='major', labelsize=12)
+    # Increase title font size
+    ax[1].title.set_fontsize(14)
+    ax[1].xaxis.label.set_fontsize(12)
+    ax[1].yaxis.label.set_fontsize(12)
 
     return fig, ax
 
