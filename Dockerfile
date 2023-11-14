@@ -30,7 +30,7 @@ RUN apt-get update && \
 
 RUN apt-get update && apt-get install -y python3.10-distutils python3.10-dev
 
-RUN apt-get install -y intel-mkl
+RUN apt-get install -y intel-mklw
 
 RUN cd /usr/local/bin \
     && ln -s /usr/bin/python3.10 python \
