@@ -64,7 +64,7 @@ def convert_path_to_changes_in_distance(graph: nx.Graph, path: list,
             i + 1]))  # If you're getting error here, the incoming path probably doesn't have enough nodes.
 
     return distances
- 
+
 
 def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: int,
                                    max_paths_for_each_reachable_node: int, max_input_path_length: int,
@@ -286,8 +286,8 @@ def split_list_into_chunks(l: list, max_size: int):
 
 
 #Created this function to check the dimension of the input in the training
-#as it can be different if we want to add more features so in the encoding further, we dont 
-#hardcode the input/output, but we can infer it from the input data.
+#as it can be different (3 or 4) so in the encoding further, we dont 
+#hardcode the input and the output to 3 or 4 dimensions, but we can infer it from the input data.
 def _infer_feature_dim(training_sequence: list, default_dim: int = 3) -> int:
     for paths in training_sequence:
         for path in paths:
