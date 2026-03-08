@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.autograd import Variable
+import torch.nn.functional as F
 
 
 class GraphEncoderRNN(torch.nn.Module):
@@ -23,12 +24,16 @@ class GraphEncoderRNN(torch.nn.Module):
         """
         super().__init__()
         self.n_dimensions = n_dimensions
+        self.spatial_dims = min(3, n_dimensions)
+        self.extra_dims = max(0, n_dimensions - self.spatial_dims)
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.is_bidirectional = is_bidirectional
 
-        # Create an embedding layer
-        self.embedding = nn.Embedding(n_classes, embedding_size)
+        #use separate embeddings for spatial coordinates (xyz) and radius and other 
+        #extra features incase we want to add more 
+        self.spatial_embedding = nn.Embedding(n_classes, embedding_size)
+        self.extra_embedding = nn.Embedding(n_classes, embedding_size) if self.extra_dims > 0 else None
 
         # Create a GRU as encoder. The input size is an embedding representation for each dimension (3 when in 3D)
         self.encoder = nn.GRU(input_size=embedding_size * n_dimensions, hidden_size=hidden_size,
@@ -43,7 +48,12 @@ class GraphEncoderRNN(torch.nn.Module):
         :param h: Initial hidden state of shape (num_layers * num_directions, batch, hidden_size)
         :return:
         """
-        embedded = self.embedding(x).view(x.size(0), x.size(1), -1)
+        spatial_embedded = self.spatial_embedding(x[:, :, :self.spatial_dims]).view(x.size(0), x.size(1), -1)
+        if self.extra_dims > 0:
+            extra_embedded = self.extra_embedding(x[:, :, self.spatial_dims:]).view(x.size(0), x.size(1), -1)
+            embedded = torch.cat([spatial_embedded, extra_embedded], dim=2)
+        else:
+            embedded = spatial_embedded
 
         output, hidden_next = self.encoder(embedded, h)
 
@@ -82,9 +92,12 @@ class GraphDecoderRNN(nn.Module):
         self.is_bidirectional = is_bidirectional
 
         self.n_dimensions = n_dimensions
+        self.spatial_dims = min(3, n_dimensions)
+        self.extra_dims = max(0, n_dimensions - self.spatial_dims) #incase we want to add more features other than radius
 
-        # Init an embedding layer for the coordinates
-        self.embedding = nn.Embedding(n_classes, embedding_size)
+        #use separate embeddings for spatial coordinates (xyz) and radius and any other future feature
+        self.spatial_embedding = nn.Embedding(n_classes, embedding_size)
+        self.extra_embedding = nn.Embedding(n_classes, embedding_size) if self.extra_dims > 0 else None
         # Init a GRU as decoder
         self.decoder = nn.GRU(input_size=embedding_size * n_dimensions, hidden_size=hidden_size,
                               num_layers=self.num_layers, bias=True, batch_first=True, dropout=0,
@@ -102,8 +115,13 @@ class GraphDecoderRNN(nn.Module):
         :param h:
         :return:
         """
-        # Compute embeddings
-        output = self.embedding(x).view(x.size(0), x.size(1), -1)
+        #compute embeddings for xyz and other features
+        spatial_embedded = self.spatial_embedding(x[:, :, :self.spatial_dims]).view(x.size(0), x.size(1), -1)
+        if self.extra_dims > 0:
+            extra_embedded = self.extra_embedding(x[:, :, self.spatial_dims:]).view(x.size(0), x.size(1), -1)
+            output = torch.cat([spatial_embedded, extra_embedded], dim=2)
+        else:
+            output = spatial_embedded
         output = self.relu(output)
 
         output, hidden_next = self.decoder(output, h)
@@ -160,6 +178,8 @@ class GraphSeq2Seq(nn.Module):
                                        is_bidirectional).to(device)
         self.decoder = GraphDecoderRNN(n_dimensions, n_classes, hidden_size, num_layers, embedding_size,
                                        is_bidirectional).to(device)
+        #layernorm to normalize aggregated hidden states per-layer across hidden_size
+        self.hidden_layer_norm = nn.LayerNorm(hidden_size).to(device)
 
     def forward(self, x, y=None):
         """
@@ -176,10 +196,12 @@ class GraphSeq2Seq(nn.Module):
         # Get the batch size
         batch_size = x.size(0)
 
+        spatial_dims = min(3, self.n_dimensions)
+
         # Determine the number of layers of the encoder (depends on whether it is bidirectional or not)
         num_layers = self.num_layers * 2 if self.is_bidirectional else self.num_layers
         # Initialize the hidden state of the encoder
-        batch_encoder_hidden = torch.zeros(num_layers, batch_size, self.hidden_size)
+        batch_encoder_hidden = torch.zeros(num_layers, batch_size, self.hidden_size, device=self.device)
 
         # Determine the class that corresponds to zero relative coordinates. The same number of classes are attributed
         # to positive and negative relative coordinates. The middle point is the zero class.
@@ -189,48 +211,63 @@ class GraphSeq2Seq(nn.Module):
         for batch_sample_idx in range(batch_size):
             sample = x[batch_sample_idx]
 
-            # Get mask of elements in dim 0 of sample that are not all zeros
-            non_padding_paths = torch.amax(torch.abs(sample - zero_class), dim=(1, 2)) > 0
+            #het mask for non-padding paths using spatial coordinates only.
+            spatial_sample = sample[:, :, :spatial_dims]
+            non_padding_paths = torch.amax(torch.abs(spatial_sample - zero_class), dim=(1, 2)) > 0
 
-            # Filter out all padding paths
+            #filter out all padding paths
             sample = sample[non_padding_paths]
 
             encoder_hidden = self.encoder.init_hidden(sample.size(0)).to(device=self.device)
 
-            # Encode paths and aggregate hidden states. The hidden states are summed!
             out, encoder_hidden = self.encoder(sample, encoder_hidden)
-            batch_encoder_hidden[:, batch_sample_idx, :] = torch.sum(encoder_hidden, dim=1)
+            #aggregate hidden states across the path batch by taking the mean over paths,
+            aggregated = torch.mean(encoder_hidden, dim=1)
+            #apply layer norm
+            aggregated = self.hidden_layer_norm(aggregated)
+            batch_encoder_hidden[:, batch_sample_idx, :] = aggregated
 
         # Aggregate context
         decoder_hidden = batch_encoder_hidden.to(device=self.device)
 
-        # Initialize the decoder input with the zero class. Note that no special token is used for the start of the
-        # sequence. It is simply indicating that no movement existed in the previous node.
-        decoder_start_input = torch.tensor([[[zero_class] * self.n_dimensions]]).repeat(batch_size, 1, 1).long().to(
-            device=self.device)
+        # Initialize decoder start token.
+        # xyz dims use zero_class; radius start from 0.
+        decoder_start_classes = [zero_class] * spatial_dims + [0] * (self.n_dimensions - spatial_dims)
+        decoder_start_input = torch.tensor([decoder_start_classes], device=self.device).long().unsqueeze(0).repeat(
+            batch_size, 1, 1)
 
         if y is not None:
-            # TRAINING: Perform teacher forcing
-            decoder_input = torch.cat([decoder_start_input, y[:, 1, 0:-1]], dim=1)
+            # TRAINING: Perform teacher forcing.
+            #trainer.py already selects a random path per sample and passes y with shape
+            #(batch_size, max_output_nodes, n_dimensions). 
+            teacher_forcing_steps = y[:, 0:-1]
+
+            decoder_input = torch.cat([decoder_start_input, teacher_forcing_steps], dim=1)
             # Note that the aggregated context is being passed to the decoder
             decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
             decoder_output = decoder_output.view(-1, self.n_classes)
         else:
-            # INFERENCE: For debugging purposes, the most probable class is selected at each step. In the future, a
-            # multinomial distribution will be used to sample from the output probabilities.
+            # INFERENCE: Sample classes for each dimension from multinomial distributions.
             decoder_input = decoder_start_input
             all_decoder_outputs = []
             for i in range(self.max_output_nodes):
                 # The aggregated context is being passed to the decoder. The decoder input is ALWAYS the previous
                 # output
                 decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
-                decoder_output = decoder_output.squeeze(0).softmax(dim=2)
-                # Sample from a multinomial distribution
-                indices = torch.multinomial(decoder_output.squeeze(0), 1)
-                decoder_input = indices.view(1, 1, 3)
-                all_decoder_outputs.append(indices.view(-1))
+                step_logits = decoder_output[:, -1, :, :]  # (batch_size, n_dimensions, n_classes)
+                step_probs = step_logits.softmax(dim=2)
 
-            decoder_output = torch.stack(all_decoder_outputs, dim=0)
+                sampled_indices = torch.multinomial(
+                    step_probs.reshape(-1, self.n_classes),
+                    1
+                ).view(batch_size, self.n_dimensions)
+
+                decoder_input = sampled_indices.unsqueeze(1)
+                all_decoder_outputs.append(sampled_indices)
+
+            decoder_output = torch.stack(all_decoder_outputs, dim=1)  #(batch_size, max_output_nodes, n_dimensions)
+            if batch_size == 1:
+                decoder_output = decoder_output.squeeze(0)
 
         return decoder_output
 

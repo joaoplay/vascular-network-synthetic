@@ -24,7 +24,7 @@ def convert_to_networkx(pyg_graphs):
 
             # Assign attributes to each edge
             edge_attrs[(start_node.item(), end_node.item())] = {
-                'radius': graph.edge_attr[edge_idx][2].float().item()}  # Radius
+                'avgRadiusAvg': graph.edge_attr[edge_idx][2].float().item()}  # Radius
 
         # Convert to NetworkX graph
         networkx_graph = to_networkx(graph, to_undirected=True)
