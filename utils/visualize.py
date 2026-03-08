@@ -76,6 +76,8 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
 
     trace_edges = []
     shown_classes = set()
+    labels = ['tiny', 'small', 'medium', 'normal', 'large', 'huge']
+
     for edge_idx in range(0, len(edge_list)):
         x_edge = [x_edges[edge_idx * 3], x_edges[edge_idx * 3 + 1], None]
         y_edge = [y_edges[edge_idx * 3], y_edges[edge_idx * 3 + 1], None]
@@ -84,23 +86,23 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
         edge_radius_val = edge_radius_values[edge_idx]
         class_idx = edges_class[edge_idx]
         edge_color = color_map[class_idx]
-
+        label = labels[class_idx]
         show_legend = class_idx not in shown_classes
         shown_classes.add(class_idx)
 
         # Create a trace for each edge with class-based coloring
         trace_edges.append(
             go.Scatter3d(x=x_edge, y=y_edge, z=z_edge, mode='lines', 
-                         line=dict(color=edge_color, width=edge_radius_val * 2),
+                         line=dict(color=edge_color, width=edge_radius_val/class_idx),
                          name=f'Class {class_idx}',
-                         hovertemplate=f'<b>Vessel</b><br>Radius: {edge_radius_val:.3f} μm<br>Class: {class_idx}<extra></extra>',
+                         hovertemplate=f'<b>Vessel</b><br>Radius: {label}<br>Class: {class_idx}<extra></extra>',
                          showlegend=show_legend))
 
     trace_nodes = []
     if nodes_groups:
         for group in groups:
             trace_nodes.append(go.Scatter3d(x=group['nodes_x'], y=group['nodes_y'], z=group['nodes_z'], mode='markers',
-                                            marker=dict(symbol='circle', size=5, color=group['color']),
+                                            marker=dict(symbol='circle', size=2, color=group['color']),
                                             opacity=group['opacity']
                                             # line=dict(color='black', width=0.5)),
                                             ))
@@ -109,7 +111,7 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
         #is it possible to have different colors for nodes based on their attributes? If so, we can implement that here.
         #joao can you look at this please ? :)
         trace_nodes.append(go.Scatter3d(x=x_nodes, y=y_nodes, z=z_nodes, mode='markers',
-                                        marker=dict(symbol='circle', size=5, color='lightgreen'),
+                                        marker=dict(symbol='circle', size=2, color='lightgreen'),
                                         # line=dict(color='black', width=0.5)),
                                         ))
 
