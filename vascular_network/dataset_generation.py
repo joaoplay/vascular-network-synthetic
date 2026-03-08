@@ -34,9 +34,10 @@ def generate_training_graph(dataset_output_path: str, voxel_dim: list = (100.0, 
     filtered_nodes = torch.argwhere(c == most_common_index).squeeze()
     clustered_data.edge_index = clustered_data.edge_index[:, np.all(np.isin(clustered_data.edge_index, filtered_nodes),
                                                                     axis=0)]
-
+    clustered_data.edge_attr = clustered_data.edge_attr[np.all(np.isin(clustered_data.edge_index, filtered_nodes), axis=0)]
     r_isolated_nodes = torch_geometric.transforms.RemoveIsolatedNodes()
     r_isolated_nodes(clustered_data)
+
 
     # Get the degree of each node
     nodes_degree = torch.bincount(clustered_data.edge_index[0])
@@ -50,6 +51,7 @@ def generate_training_graph(dataset_output_path: str, voxel_dim: list = (100.0, 
     # Filter out not in filtered nodes
     clustered_data.edge_index = clustered_data.edge_index[:, np.all(np.isin(clustered_data.edge_index, filtered_nodes),
                                                                     axis=0)]
+    clustered_data.edge_attr = clustered_data.edge_attr[np.all(np.isin(clustered_data.edge_index, filtered_nodes), axis=0)]
 
     # Get the largest connected component
     largest_component = torch_geometric.transforms.LargestConnectedComponents()
@@ -57,6 +59,15 @@ def generate_training_graph(dataset_output_path: str, voxel_dim: list = (100.0, 
     largest_component_data = largest_component(clustered_data)
     nx_graph = convert_to_networkx([largest_component_data])[0]
 
+    edge_index = largest_component_data.edge_index
+    edge_attr = largest_component_data.edge_attr
+
+    for i in range(edge_index.shape[1]):
+        u = int(edge_index[0, i])
+        v = int(edge_index[1, i])
+        r = float(edge_attr[i, 2]) #radius is the 3rd attribute in edge_attr 
+        if nx_graph.has_edge(u, v):
+            nx_graph[u][v]["avgRadiusAvg"] = r
     return nx_graph, largest_component_data
 
 

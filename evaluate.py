@@ -32,10 +32,6 @@ def evaluate_model(cfg: DictConfig):
     # nodes in the graph
     cfg.paths.max_output_nodes = max([training_graph.degree(node) for node in training_graph.nodes()])
 
-    # Init a new GraphSeq2Seq model
-    model = GraphSeq2Seq(n_classes=cfg.num_classes + 1, max_output_nodes=cfg.paths.max_output_nodes, device=device,
-                         **cfg.model)
-
     preprocessed_data_dir = os.path.join(OUTPUT_PATH, f'{PROCESSED_DATA_DIR_NAME}/')
 
     # Create a GraphDataGenerator responsible for generating the sequential training data from a graph.
@@ -45,7 +41,14 @@ def evaluate_model(cfg: DictConfig):
                                               num_iterations=cfg.num_preprocessing_iterations,
                                               remove_duplicates=cfg.remove_duplicates, **cfg.paths)
 
-    data_x, data_y, cat_coordinates_encoder = graph_data_generator.load()
+    data_x, data_y, cat_coordinates_encoder, radius_class_encoder = graph_data_generator.load()
+
+    feature_dim = int(data_x.shape[-1])
+    print(f'Using model n_dimensions={feature_dim}')
+
+    # Init a new GraphSeq2Seq model
+    model = GraphSeq2Seq(n_classes=cfg.num_classes + 1, max_output_nodes=cfg.paths.max_output_nodes,
+                         n_dimensions=feature_dim, device=device, **cfg.model)
 
     # Init a trainer for the GraphSeq2Seq model. We don't specify a train dataset nor class weights because we are
     # using the trainer only for evaluation purposes.
@@ -53,6 +56,7 @@ def evaluate_model(cfg: DictConfig):
     trainer = GraphSeq2SeqTrainer(model=model, train_dataset=None, graph=training_graph,
                                   distance_function=get_signed_distance_between_nodes,
                                   categorical_coordinates_encoder=cat_coordinates_encoder,
+                                  radius_class_encoder=radius_class_encoder,
                                   class_weights=None, ignore_index=cfg.num_classes, **cfg.evaluator,
                                   **cfg.paths,
                                   **cfg.trainer)

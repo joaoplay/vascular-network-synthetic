@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 
 from sgg.data import generate_training_samples_for_node
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
+from utils.radius_class_encoder import RadiusClassEncoder   
 from utils.torch import unique
 
 
@@ -64,13 +65,15 @@ class GraphDataGenerator:
                                                                         encoder_path=self.categorical_encoder_path)
         categorical_coordinates_encoder.load_parameters()
 
+        radius_class_encoder = RadiusClassEncoder()
+
         # Load training data
         data_x = torch.load(self.data_x_path)
         data_y = torch.load(self.data_y_path)
 
         print(f'Dataset has shape {data_x.shape} and {data_y.shape}')
 
-        return data_x, data_y, categorical_coordinates_encoder
+        return data_x, data_y, categorical_coordinates_encoder, radius_class_encoder
 
     def generate(self):
         """
@@ -132,23 +135,59 @@ class GraphDataGenerator:
         # data_x_df.to_csv('data_y_raw_vascular.csv', index=False)
 
         # 2 - Convert relative positions to classes
-        # Flat input_data and prediction_data and concatenate them. This is necessary to have a single tensor
-        # from which we can infer the range of values for all the coordinates.
-        input_data_flatten = input_data.flatten()
-        prediction_data_flatten = prediction_data.flatten()
+        feature_dim = input_data.shape[-1]
 
-        # Print min value in prediction_data_flatten
-        print(f'Min value in prediction_data_flatten: {prediction_data_flatten.min()}')
-
-        all_data = torch.cat((input_data_flatten, prediction_data_flatten), dim=0)
-
-        # Create and fit categorical encoder
+        # Create and fit categorical encoder on xyz only (first 3 dimensions)
         categorical_coordinates_encoder = CategoricalCoordinatesEncoder(n_categories=self.num_classes,
                                                                         encoder_path=self.categorical_encoder_path)
-        categorical_coordinates_encoder.fit(all_data)
-        # Encode input_data and prediction_data
-        input_data = categorical_coordinates_encoder.transform(input_data)
-        prediction_data = categorical_coordinates_encoder.transform(prediction_data)
+
+        input_xyz = input_data[..., :3]
+        prediction_xyz = prediction_data[..., :3]
+        all_xyz_data = torch.cat((input_xyz.flatten(), prediction_xyz.flatten()), dim=0)
+
+        print(f'Min xyz value in prediction_data_flatten: {prediction_xyz.flatten().min()}')
+
+        categorical_coordinates_encoder.fit(all_xyz_data)
+
+        encoded_input_xyz = categorical_coordinates_encoder.transform(input_xyz)
+        encoded_prediction_xyz = categorical_coordinates_encoder.transform(prediction_xyz)
+
+        if feature_dim > 3:
+            #encode radius separately as classes, because it has a different distribution than the xyz coordinates 
+            #and we want to give it a different encoding, its also able to handle more features in the future
+            #if we want to add more :)
+            radius_class_encoder = RadiusClassEncoder()
+
+            input_radius = input_data[..., 3]
+            prediction_radius = prediction_data[..., 3]
+
+            input_radius_nan_mask = torch.isnan(input_radius)
+            prediction_radius_nan_mask = torch.isnan(prediction_radius)
+
+            encoded_input_radius = radius_class_encoder.transform(input_radius)
+            encoded_prediction_radius = radius_class_encoder.transform(prediction_radius)
+
+
+            #keep padding/unknown values aligned with ignore_index convention 
+            #if i dont do this, the model gives out of bounds errors ???
+            #---------------------------------------------------------------
+            encoded_input_radius[input_radius_nan_mask] = self.num_classes
+            encoded_prediction_radius[prediction_radius_nan_mask] = self.num_classes
+            #didnt understand this bit, i used copilot to help me here 
+            #---------------------------------------------------------------
+
+
+            input_data = torch.empty_like(input_data, dtype=torch.long)
+            prediction_data = torch.empty_like(prediction_data, dtype=torch.long)
+
+            input_data[..., :3] = encoded_input_xyz
+            prediction_data[..., :3] = encoded_prediction_xyz
+            input_data[..., 3] = encoded_input_radius.long()
+            prediction_data[..., 3] = encoded_prediction_radius.long()
+        else:
+            radius_class_encoder = RadiusClassEncoder()
+            input_data = encoded_input_xyz.long()
+            prediction_data = encoded_prediction_xyz.long()
 
         # Export data_x to csv with dimensions (2099 * 2, 5 * 3)
         # input_data_np = input_data.reshape(input_data.shape[0] * input_data.shape[1], input_data.shape[2] *
@@ -202,7 +241,7 @@ class GraphDataGenerator:
         torch.save(prediction_data, self.data_y_path)
         categorical_coordinates_encoder.save_parameters()
 
-        return input_data, prediction_data, categorical_coordinates_encoder
+        return input_data, prediction_data, categorical_coordinates_encoder, radius_class_encoder
 
     @property
     def file_name_prefix(self):

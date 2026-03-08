@@ -239,7 +239,7 @@ class VesselGraphDataset(InMemoryDataset):
 
             # includes all edges (train+test+val) in both drections
             data.edge_index_undirected = torch.tensor(edge_array, dtype=torch.long)
-            data.edge_attr_undirected = torch.tensor(edge_attr_array, dtype=torch.long)
+            data.edge_attr_undirected = torch.tensor(edge_attr_array, dtype=torch.float)
             del edge_array
             del edge_attr_array
 
