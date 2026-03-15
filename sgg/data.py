@@ -298,6 +298,7 @@ def _infer_feature_dim(training_sequence: list, default_dim: int = 3) -> int:
     return default_dim
 
 
+#this function is never called ? 
 def encoding_simplified(training_sequence: list, max_input_paths_per_node: int,
                         max_input_path_length: int, max_output_nodes: int):
     feature_dim = _infer_feature_dim(training_sequence)

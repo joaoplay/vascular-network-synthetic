@@ -48,7 +48,11 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
     else:
         edge_radius_values = [float(radius) for radius in edges_radius]
 
-
+    # Gather flow values for each edge
+    edge_flow_values = [
+        float(nx_graph.edges[edge].get('flow', 0) or 0)
+        for edge in edge_list
+    ]
 
     # Choose 6 distinguishable colors per class (R_EDGES has 5 boundaries => 6 classes)
     color_map = ["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728", "#9467bd", "#8c564b"]
@@ -84,6 +88,7 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
         z_edge = [z_edges[edge_idx * 3], z_edges[edge_idx * 3 + 1], None]
 
         edge_radius_val = edge_radius_values[edge_idx]
+        edge_flow = edge_flow_values[edge_idx]
         class_idx = edges_class[edge_idx]
         edge_color = color_map[class_idx]
         label = labels[class_idx]
@@ -91,11 +96,12 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
         shown_classes.add(class_idx)
 
         # Create a trace for each edge with class-based coloring
+        line_width = min(max(1.0 + 2.5 * np.log1p(edge_radius_val), 1.0), 8.0)
         trace_edges.append(
             go.Scatter3d(x=x_edge, y=y_edge, z=z_edge, mode='lines', 
-                         line=dict(color=edge_color, width=edge_radius_val/(class_idx+1)),
+                         line=dict(color=edge_color, width=line_width),
                          name=f'Class {class_idx}',
-                         hovertemplate=f'<b>Vessel</b><br>Radius: {label}<br>Class: {class_idx}<extra></extra>',
+                         hovertemplate=f'<b>Vessel</b><br>Radius: {label} <br>Flow: {edge_flow:.2f}<extra></extra>',
                          showlegend=show_legend))
 
     trace_nodes = []
@@ -128,3 +134,16 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
     fig = go.Figure(data=data, layout=layout)
 
     return fig
+
+
+def save_graph_html(nx_graph, output_path='graph.html', **kwargs):
+    """Save an interactive 3D graph visualization to an HTML file.
+
+    All keyword arguments are forwarded to draw_3d_graph.
+
+    :param nx_graph: NetworkX graph to visualize
+    :param output_path: Path for the output HTML file
+    """
+    fig = draw_3d_graph(nx_graph, **kwargs)
+    fig.write_html(output_path)
+    print(f'Saved interactive visualization to {output_path}')

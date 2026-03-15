@@ -407,7 +407,7 @@ def annotate_graph_with_flows(graph: nx.Graph,
                               params: Optional[FlowEstimateParams] = None,
                               boundary_conditions: Optional[dict] = None) -> nx.Graph:
     
-    result = estimate_flows(graph, params=params, boundary_conditions=boundary_conditions)
+    result = estimate_flows(graph, constants=params, boundary_conditions=boundary_conditions)
 
     nx.set_node_attributes(graph, result.node_pressures, 'pressure')
 
@@ -421,3 +421,55 @@ def annotate_graph_with_flows(graph: nx.Graph,
         graph.edges[u, v]['viscosity'] = visc
 
     return graph
+
+
+def compute_radius_from_flow(flow: float, u: int, v: int, graph: nx.Graph,
+                             min_radius: float = 1.0, default_viscosity: float = 3.0) -> float:
+    """Compute a vessel radius from Poiseuille's law
+
+    Uses the pressure drop across the edge (from node pressures), the edge
+    viscosity, and the edge length (from node coordinates).
+
+    
+    The conversion factor 'facfp' from the solver is applied so units are
+    consistent: cond = facfp * d^4 / (L * μ), Q = cond * deltaP.
+
+    params:
+        flow: Flow through the edge (nl/min).
+        u: incoming node id.
+        v: outgoing node id.
+        graph: NetworkX graph
+        min_radius: Minimum allowed radius (microns).
+        default_viscosity: Fallback viscosity in cP.
+
+    Returns:
+        Estimated radius in microns.
+    """
+    abs_flow = abs(flow)
+    if abs_flow < 1e-10:
+        return min_radius
+
+    #pressure drop across the edge
+    p_u = graph.nodes[u].get('pressure', 0)
+    p_v = graph.nodes[v].get('pressure', 0)
+    delta_p = abs(p_u - p_v)
+    if delta_p < 1e-10:
+        return min_radius
+
+    #edge length from coordinates
+    coord_u = np.array(graph.nodes[u].get('node_label', [0, 0, 0])[:3], dtype=float)
+    coord_v = np.array(graph.nodes[v].get('node_label', [0, 0, 0])[:3], dtype=float)
+    length = float(np.linalg.norm(coord_v - coord_u))
+    if length < 1e-3:
+        length = 1e-3
+
+    viscosity = float(graph.edges[u, v].get('viscosity', default_viscosity) or default_viscosity)
+
+    # facfp is the unit-conversion factor from the solver:
+    # cond = facfp * d^4 / (L * mu),  Q = cond * dP
+    # so Q = facfp * (2r)^4 / (L * mu) * dP
+    # solving for r: r = ( Q * L * mu / (facfp * 16 * dP) )^(1/4)
+    facfp = np.pi * 1333.0 / 128.0 / 0.01 * 60.0 / 1.0e6
+
+    radius = (abs_flow * length * viscosity / (facfp * 16.0 * delta_p)) ** 0.25
+    return max(float(radius), min_radius)

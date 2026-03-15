@@ -12,6 +12,7 @@ from sgg.data import generate_training_samples_for_node
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.embedding import calculate_embedding_representation
+from utils.flow_estimate import annotate_graph_with_flows, compute_radius_from_flow
 from utils.radius_class_encoder import RadiusClassEncoder
 
 
@@ -32,8 +33,66 @@ def reset_subgraph_indexes(subgraph):
     return relabeled_subgraph
 
 
+def find_main_vessel(graph: nx.Graph):
+    """Identify the main vessel of the network: the input node, the output node,
+    and the path between them
+
+    The main vessel is defined as the shortest path between the two boundary
+    nodes (degree == 1) that are farthest apart
+
+    Every node along the main vessel path gets a 'main_vessel' attribute set
+    to True, and every edge along it gets 'main_vessel' = True as well
+
+    Args:
+        graph: NetworkX graph
+
+    Returns:
+        tuple: (input_node_id, output_node_id, main_vessel_path) where
+               main_vessel_path is a list of node ids from input to output
+               Returns (None, None, []) when fewer than 2 boundary nodes exist
+    """
+    boundary_nodes = [n for n in graph.nodes() if graph.degree(n) == 1]
+
+    if len(boundary_nodes) < 2:
+        return None, None, []
+
+    #find the pair of boundary nodes with the longest shortest path
+    best_pair = None
+    best_length = -1
+    for i, u in enumerate(boundary_nodes):
+        for v in boundary_nodes[i + 1:]:
+            try:
+                length = nx.shortest_path_length(graph, u, v)
+            except nx.NetworkXNoPath:
+                continue
+            if length > best_length:
+                best_length = length
+                best_pair = (u, v)
+
+    if best_pair is None:
+        return None, None, []
+
+    input_node, output_node = best_pair
+
+    main_vessel_path = nx.shortest_path(graph, input_node, output_node)
+
+    # Mark nodes and edges along the main vessel
+    for node in main_vessel_path:
+        graph.nodes[node]['main_vessel'] = True
+    for u, v in zip(main_vessel_path[:-1], main_vessel_path[1:]):
+        graph.edges[u, v]['main_vessel'] = True
+
+    graph.nodes[input_node]['node_type'] = 'input'
+    graph.nodes[output_node]['node_type'] = 'output'
+
+    return input_node, output_node, main_vessel_path
+
+
 def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
     """Get a starting map to begin the generation of synthetic graphs.
+
+    After extracting the seed subgraph, identifies the main vessel (input and
+    output nodes) and annotates flow and pressure on the graph.
 
     Args:
         graph (networkx.Graph): The graph with the source nodes used for training.
@@ -58,6 +117,10 @@ def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
     # Determine the unvisited nodes. These are the nodes that have a degree of 1.
     unvisited_nodes = [node_idx for node_idx in starting_map.nodes() if nx.degree(starting_map, node_idx) == 1]
     unvisited_nodes.remove(start_node_id)
+
+    # Identify the main vessel and annotate flows
+    find_main_vessel(starting_map)
+    annotate_graph_with_flows(starting_map)
 
     return starting_map, unvisited_nodes
 
@@ -96,6 +159,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
     established_loops = 0
     new_nodes = 0
+    pending_edges = []
 
     steps = []
 
@@ -117,6 +181,9 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
         # Convert relative coordinates to categorical features
         x = categorical_coordinates_encoder.transform(x).unsqueeze(0)
+
+        #track edges added during this iteration for flow-based radius adjustment
+        new_edges_this_iteration = []
 
         # Call model to generate new nodes from previously codified paths
         predicted_nodes = graph_seq_2_seq.generate(x)
@@ -181,6 +248,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     else:
                         generated_graph.add_edge(current_node_id, loop_node_id)
 
+                    new_edges_this_iteration.append((current_node_id, loop_node_id))
                     steps += [(current_node_id, loop_node_id, None)]
                 else:
                     new_nodes += 1
@@ -198,15 +266,43 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     else:
                         generated_graph.add_edge(current_node_id, new_node_id)
                     
+                    new_edges_this_iteration.append((current_node_id, new_node_id))
                     unvisited_nodes.append(new_node_id)
 
                     steps += [(current_node_id, new_node_id, next_node_coord.tolist())]
             else:
                 break
 
+        # Collect new edges for batch flow recomputation
+        if new_edges_this_iteration:
+            pending_edges.extend(new_edges_this_iteration)
+
+        # Every 100 node expansions, recompute flows and adjust radii in batch
+        if pending_edges and (i + 1) % 100 == 0:
+            annotate_graph_with_flows(generated_graph)
+            for u, v in pending_edges:
+                if generated_graph.has_edge(u, v):
+                    edge_flow = generated_graph.edges[u, v].get('flow', 0)
+                    adjusted_radius = compute_radius_from_flow(edge_flow, u, v, generated_graph)
+                    generated_graph.edges[u, v]['avgRadiusAvg'] = adjusted_radius
+            pending_edges = []
+
         if len(unvisited_nodes) == 0:
             # No more unvisited nodes. Stop the generation process.
             break
+
+    #final flow recomputation
+    if pending_edges:
+        annotate_graph_with_flows(generated_graph)
+        for u, v in pending_edges:
+            if generated_graph.has_edge(u, v):
+                edge_flow = generated_graph.edges[u, v].get('flow', 0)
+                adjusted_radius = compute_radius_from_flow(edge_flow, u, v, generated_graph)
+                generated_graph.edges[u, v]['avgRadiusAvg'] = adjusted_radius
+
+    #identify the main vessel and annotate flows on the grown graph
+    #find_main_vessel(generated_graph)
+    generated_graph = annotate_graph_with_flows(generated_graph)
 
     return generated_graph, steps
 

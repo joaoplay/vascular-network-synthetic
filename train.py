@@ -129,7 +129,7 @@ def train_model(cfg: DictConfig):
     # Add a set of callbacks to: print the training loss; generate a synthetic graph and perform a comparison
     # with the validation data; save the model to a checkpoint file.
     trainer.add_callback(ON_BATCH_END, log_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
-    trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters)
+    trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters, output_dir=hydra_cwd)
     trainer.add_callback(ON_TRAIN_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,
                          checkpoint_save_path=checkpoints_dir, save_checkpoint_at_the_end=cfg.save_at_the_end)
 

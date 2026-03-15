@@ -2,14 +2,16 @@ import os
 
 import wandb
 from sgg.trainer import GraphSeq2SeqTrainer
+from utils.visualize import save_graph_html
 
 
-def evaluate_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
+def evaluate_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, output_dir: str = None):
     """
     This callback generates a synthetic graph with the model trained so far and evaluates it against the
-    validation data
+    validation data. Optionally saves interactive HTML visualizations.
     :param trainer: A GraphSeq2SeqTrainer model
     :param every_n_iters: How often to evaluate the model
+    :param output_dir: If provided, save HTML graph visualizations to this directory
     :return:
     """
     if trainer.iter_num % every_n_iters == 0:
@@ -23,6 +25,18 @@ def evaluate_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
         # Send plots to wandb
         for plot_label, plot in plots.items():
             wandb.log({f'{plot_label}': plot})
+
+        # Save interactive HTML visualizations
+        if output_dir is not None:
+            graphs_dir = os.path.join(output_dir, 'graphs')
+            os.makedirs(graphs_dir, exist_ok=True)
+            for plot_label in ('synthetic_graph', 'seed_graph'):
+                fig = plots.get(plot_label)
+                if fig is None:
+                    continue
+                path = os.path.join(graphs_dir, f'{plot_label}_iter_{trainer.iter_num}.html')
+                fig.write_html(path)
+                print(f'Saved {plot_label} to {path}')
 
 
 def save_checkpoint_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, checkpoint_save_path: str,
