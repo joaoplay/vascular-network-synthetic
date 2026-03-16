@@ -240,11 +240,12 @@ def generate_training_data_for_graph(graph: nx.graph, max_input_paths_per_node: 
 
 def get_signed_distance_between_nodes(graph: nx.Graph, from_node_id, to_node_id):
     """
-    Get the signed distance between two nodes as change in x, and y in meters.
+    Get the signed distance between two nodes as change in x, y, z and the radius of the edge.
+    Returns a numpy array of [dx, dy, dz, radius] if edge has radius, otherwise [dx, dy, dz].
     :param graph:
     :param from_node_id:
     :param to_node_id:
-    :return:
+    :return: numpy array of [dx, dy, dz] or [dx, dy, dz, radius]
     """
     current_node = graph.nodes[from_node_id]
     next_node = graph.nodes[to_node_id]
@@ -252,7 +253,16 @@ def get_signed_distance_between_nodes(graph: nx.Graph, from_node_id, to_node_id)
     current_node_pos = np.array(current_node['node_label'])
     next_node_pos = np.array(next_node['node_label'])
 
-    return next_node_pos - current_node_pos
+    position_delta = next_node_pos - current_node_pos
+    
+    # Check if edge exists and has radius attribute
+    if graph.has_edge(from_node_id, to_node_id):
+        edge_data = graph.edges[from_node_id, to_node_id]
+        if 'avgRadiusAvg' in edge_data:
+            radius = edge_data['avgRadiusAvg']
+            return np.append(position_delta, radius)
+    
+    return position_delta
 
 
 def split_list_into_chunks(l: list, max_size: int):
@@ -275,11 +285,39 @@ def split_list_into_chunks(l: list, max_size: int):
     return new_list
 
 
+def _infer_feature_dim(training_sequence: list, default_dim: int = 3) -> int:
+    """Infer the feature dimensionality from a training sequence.
+
+    The dimension can be 3 (xyz only) or 4 (xyz + radius) depending on whether
+    the training graph edges carry a radius attribute.  Inferring it avoids
+    hard-coding the input/output tensor size throughout the data pipeline.
+
+    Args:
+        training_sequence: List of per-node path samples as produced by the
+            training-data generator.
+        default_dim: Fallback dimension when the sequence is empty or all
+            paths are empty.
+
+    Returns:
+        Detected feature dimension (typically 3 or 4).
+    """
+    for paths in training_sequence:
+        for path in paths:
+            if len(path[0]) > 0:
+                return len(path[0][0])
+            if len(path[1]) > 0 and path[1][0] is not None:
+                return len(path[1][0])
+    return default_dim
+
+
+#this function is never called ? 
 def encoding_simplified(training_sequence: list, max_input_paths_per_node: int,
                         max_input_path_length: int, max_output_nodes: int):
+    feature_dim = _infer_feature_dim(training_sequence)
+
     # Set up x+y shapes.
-    input_shape = (len(training_sequence), max_input_paths_per_node, max_input_path_length, 3)  # x shape
-    output_shape = (len(training_sequence), max_input_paths_per_node, max_output_nodes, 3)  # y shape
+    input_shape = (len(training_sequence), max_input_paths_per_node, max_input_path_length, feature_dim)  # x shape
+    output_shape = (len(training_sequence), max_input_paths_per_node, max_output_nodes, feature_dim)  # y shape
 
     # faster than zeroing out anything.
     x = np.zeros(input_shape, dtype='float32')
@@ -297,19 +335,26 @@ def encoding_simplified(training_sequence: list, max_input_paths_per_node: int,
             # Encode input and move the previous path into x
             input_path_node_index = 0
             for input_path_node in path[0]:
-                x[train_sequence_index, path_index, input_path_node_index, 0] = input_path_node[0] * 2 + 100 + 1
-                x[train_sequence_index, path_index, input_path_node_index, 1] = input_path_node[1] * 2 + 100 + 1
-                x[train_sequence_index, path_index, input_path_node_index, 2] = input_path_node[2] * 2 + 100 + 1
+                # Apply spatial encoding to xyz coordinates (first 3 dimensions)
+                for feature_idx in range(min(3, feature_dim)):
+                    x[train_sequence_index, path_index, input_path_node_index, feature_idx] = input_path_node[feature_idx] * 2 + 100 + 1
+                # Pass through additional features (like radius) without spatial encoding
+                for feature_idx in range(3, feature_dim):
+                    x[train_sequence_index, path_index, input_path_node_index, feature_idx] = input_path_node[feature_idx]
 
                 input_path_node_index += 1
 
             # Encode prediction and set values in y
             prediction_node_index = 0
             for prediction_node in path[1]:
-                y[train_sequence_index, path_index, prediction_node_index, 0] = prediction_node[0] * 2 + 100 + 1
-                y[train_sequence_index, path_index, prediction_node_index, 1] = prediction_node[1] * 2 + 100 + 1
-                y[train_sequence_index, path_index, prediction_node_index, 2] = prediction_node[2] * 2 + 100 + 1
-
+                #apply spatial encoding to xyz coordinates (first 3 dimensions)
+                for feature_idx in range(min(3, feature_dim)):
+                    y[train_sequence_index, path_index, prediction_node_index, feature_idx] = prediction_node[feature_idx] * 2 + 100 + 1
+                #pass through radius without spatial encoding, 
+                #incase we want to add more features in the future, we can just pass them through 
+                #because its not hardcoded!!
+                for feature_idx in range(3, feature_dim):
+                    y[train_sequence_index, path_index, prediction_node_index, feature_idx] = prediction_node[feature_idx]
                 prediction_node_index += 1
 
             path_index += 1
@@ -336,8 +381,10 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
     # [x, y,  x, y,  ...  x, y]
     # all x,y that are empty should be zero.
 
-    no_move = (0.0, 0.0, 0.0)
-    padding = (None, None, None)
+    feature_dim = _infer_feature_dim(training_sequence)
+
+    no_move = tuple(0.0 for _ in range(feature_dim))
+    padding = tuple(None for _ in range(feature_dim))
 
     empty_incoming_path = []
     for _ in range(max_input_path_length):
@@ -364,9 +411,9 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
 
     # Set up x+y shapes.
     input_shape = (
-        len(training_sequence), max_input_paths_per_node, max_input_path_length, 3)  # x shape
+        len(training_sequence), max_input_paths_per_node, max_input_path_length, feature_dim)  # x shape
     output_shape = (
-        len(training_sequence), max_input_paths_per_node, max_output_nodes, 3)  # y shape
+        len(training_sequence), max_input_paths_per_node, max_output_nodes, feature_dim)  # y shape
 
     # faster than zeroing out anything.
     x = np.empty(input_shape, dtype='float32')
@@ -387,6 +434,7 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
 
         path_index = 0
         # FIXME: Change it to enumerate
+
         for path in paths:
             # Pad incoming path with empty distances at the start to bring the length up to max_num_input_nodes.
             for _ in range(max_input_path_length - len(path[0])):
@@ -417,18 +465,16 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
             # Encode input and move the previous path into x
             input_path_node_index = 0
             for input_path_node in path[0]:
-                x[train_sequence_index, path_index, input_path_node_index, 0] = input_path_node[0]
-                x[train_sequence_index, path_index, input_path_node_index, 1] = input_path_node[1]
-                x[train_sequence_index, path_index, input_path_node_index, 2] = input_path_node[2]
-
+                for feature_idx in range(feature_dim):
+                    x[train_sequence_index, path_index, input_path_node_index, feature_idx] = input_path_node[feature_idx]
+                
                 input_path_node_index += 1
 
             # Encode prediction and set values in y
             prediction_node_index = 0
             for prediction_node in path[1]:
-                y[train_sequence_index, path_index, prediction_node_index, 0] = prediction_node[0]
-                y[train_sequence_index, path_index, prediction_node_index, 1] = prediction_node[1]
-                y[train_sequence_index, path_index, prediction_node_index, 2] = prediction_node[2]
+                for feature_idx in range(feature_dim):
+                    y[train_sequence_index, path_index, prediction_node_index, feature_idx] = prediction_node[feature_idx]
 
                 prediction_node_index += 1
 

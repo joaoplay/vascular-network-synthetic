@@ -73,17 +73,32 @@ def train_model(cfg: DictConfig):
     # Load or generate data. Apart from the data, the corresponding categorical coordinates encoder is returned.
     # It will be necessary to generate new predictions and evaluate the model.
     if cfg.force_rebuild_data:
-        data_x, data_y, cat_coordinates_encoder = graph_data_generator.generate()
+        data_x, data_y, cat_coordinates_encoder, radius_class_encoder = graph_data_generator.generate()
     else:
         try:
-            data_x, data_y, cat_coordinates_encoder = graph_data_generator.load()
+            data_x, data_y, cat_coordinates_encoder, radius_class_encoder = graph_data_generator.load()
         except FileNotFoundError:
             print('Data not found. Generating new data.')
-            data_x, data_y, cat_coordinates_encoder = graph_data_generator.generate()
+            data_x, data_y, cat_coordinates_encoder, radius_class_encoder = graph_data_generator.generate()
 
-    # The weight of each class is used to balance the loss function. Most of the neighboring nodes are close to
-    # each other, resulting in a high number of transitions close to 0.
-    class_weights = compute_class_weights(data_y, cfg.num_classes + 1)
+    feature_dim = int(data_x.shape[-1])
+
+    # Compute class weights separately for xyz and radius channels.
+    spatial_dims = min(3, feature_dim)
+    xyz_class_weights = compute_class_weights(data_y[..., :spatial_dims], cfg.num_classes + 1)
+    radius_class_weights = compute_class_weights(data_y[..., 3], cfg.num_classes + 1) if feature_dim > 3 else None
+
+    # Compute radius loss weight
+    if radius_class_weights is not None:
+        xyz_weight_magnitude = xyz_class_weights.mean().item()
+        radius_weight_magnitude = radius_class_weights.mean().item()
+        radius_loss_weight = radius_weight_magnitude / xyz_weight_magnitude
+        print(f"Computed radius_loss_weight: {radius_loss_weight:.3f} (radius_imbalance={radius_weight_magnitude:.2e}, xyz_imbalance={xyz_weight_magnitude:.2e})")
+    else:
+        radius_loss_weight = None
+
+    # Keep backward-compatible aggregate weights as xyz weights.
+    class_weights = xyz_class_weights
     # Compute node degree statistics for the original training graph. This is important to later compare with
     # the synthetic graphs. The corresponding graphs are logged to wandb.
     training_graph_degree_analysis = degree_analysis(nx_graph=training_graph)
@@ -92,21 +107,29 @@ def train_model(cfg: DictConfig):
     # Create a dataloader for the training data
     dataset = TensorDataset(data_x, data_y)
 
+    # Init a trainer for the GraphSeq2Seq model
+    print(f'Using model n_dimensions={feature_dim}')
+
     # Init a new GraphSeq2Seq model
-    model = GraphSeq2Seq(n_classes=cfg.num_classes + 1, max_output_nodes=cfg.paths.max_output_nodes, device=device,
-                         **cfg.model)
+    model = GraphSeq2Seq(n_classes=cfg.num_classes + 1, max_output_nodes=cfg.paths.max_output_nodes,
+                         n_dimensions=feature_dim, device=device, **cfg.model)
 
     # Init a trainer for the GraphSeq2Seq model
     trainer = GraphSeq2SeqTrainer(model=model, train_dataset=dataset, graph=training_graph,
                                   distance_function=get_signed_distance_between_nodes,
                                   categorical_coordinates_encoder=cat_coordinates_encoder,
-                                  class_weights=class_weights, ignore_index=cfg.num_classes, **cfg.evaluator,
+                                  radius_class_encoder=radius_class_encoder,
+                                  class_weights=class_weights,
+                                  xyz_class_weights=xyz_class_weights,
+                                  radius_class_weights=radius_class_weights,
+                                  radius_loss_weight=radius_loss_weight,
+                                  ignore_index=cfg.num_classes, **cfg.evaluator,
                                   **cfg.paths, **cfg.trainer)
 
     # Add a set of callbacks to: print the training loss; generate a synthetic graph and perform a comparison
     # with the validation data; save the model to a checkpoint file.
     trainer.add_callback(ON_BATCH_END, log_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
-    trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters)
+    trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters, output_dir=hydra_cwd)
     trainer.add_callback(ON_TRAIN_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,
                          checkpoint_save_path=checkpoints_dir, save_checkpoint_at_the_end=cfg.save_at_the_end)
 

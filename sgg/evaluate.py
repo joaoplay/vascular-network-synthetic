@@ -12,6 +12,8 @@ from sgg.data import generate_training_samples_for_node
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.embedding import calculate_embedding_representation
+from utils.flow_estimate import annotate_graph_with_flows, compute_radius_from_flow
+from utils.radius_class_encoder import RadiusClassEncoder
 
 
 def random_subgraph(graph, max_depth):
@@ -31,8 +33,66 @@ def reset_subgraph_indexes(subgraph):
     return relabeled_subgraph
 
 
+def find_main_vessel(graph: nx.Graph):
+    """Identify the main vessel of the network: the input node, the output node,
+    and the path between them
+
+    The main vessel is defined as the shortest path between the two boundary
+    nodes (degree == 1) that are farthest apart
+
+    Every node along the main vessel path gets a 'main_vessel' attribute set
+    to True, and every edge along it gets 'main_vessel' = True as well
+
+    Args:
+        graph: NetworkX graph
+
+    Returns:
+        tuple: (input_node_id, output_node_id, main_vessel_path) where
+               main_vessel_path is a list of node ids from input to output
+               Returns (None, None, []) when fewer than 2 boundary nodes exist
+    """
+    boundary_nodes = [n for n in graph.nodes() if graph.degree(n) == 1]
+
+    if len(boundary_nodes) < 2:
+        return None, None, []
+
+    #find the pair of boundary nodes with the longest shortest path
+    best_pair = None
+    best_length = -1
+    for i, u in enumerate(boundary_nodes):
+        for v in boundary_nodes[i + 1:]:
+            try:
+                length = nx.shortest_path_length(graph, u, v)
+            except nx.NetworkXNoPath:
+                continue
+            if length > best_length:
+                best_length = length
+                best_pair = (u, v)
+
+    if best_pair is None:
+        return None, None, []
+
+    input_node, output_node = best_pair
+
+    main_vessel_path = nx.shortest_path(graph, input_node, output_node)
+
+    # Mark nodes and edges along the main vessel
+    for node in main_vessel_path:
+        graph.nodes[node]['main_vessel'] = True
+    for u, v in zip(main_vessel_path[:-1], main_vessel_path[1:]):
+        graph.edges[u, v]['main_vessel'] = True
+
+    graph.nodes[input_node]['node_type'] = 'input'
+    graph.nodes[output_node]['node_type'] = 'output'
+
+    return input_node, output_node, main_vessel_path
+
+
 def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
     """Get a starting map to begin the generation of synthetic graphs.
+
+    After extracting the seed subgraph, identifies the main vessel (input and
+    output nodes) and annotates flow and pressure on the graph.
 
     Args:
         graph (networkx.Graph): The graph with the source nodes used for training.
@@ -58,11 +118,16 @@ def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
     unvisited_nodes = [node_idx for node_idx in starting_map.nodes() if nx.degree(starting_map, node_idx) == 1]
     unvisited_nodes.remove(start_node_id)
 
+    # Identify the main vessel and annotate flows
+    find_main_vessel(starting_map)
+    annotate_graph_with_flows(starting_map)
+
     return starting_map, unvisited_nodes
 
 
 def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq,
                              categorical_coordinates_encoder: CategoricalCoordinatesEncoder,
+                             radius_class_encoder: RadiusClassEncoder | None,
                              unvisited_nodes: list[int], num_iterations: int, max_input_paths: int,
                              max_paths_for_each_reachable_node: int, max_input_path_length: int, max_output_nodes: int,
                              distance_function: callable, max_loop_distance: float, device) -> (nx.Graph, List):
@@ -72,6 +137,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     :param seed_graph: Starting graph to generate from.
     :param graph_seq_2_seq: A GraphSeq2Seq trained model.
     :param categorical_coordinates_encoder: Fitted categorical coordinates encoder.
+    :param radius_class_encoder: Fitted radius class encoder.
     :param unvisited_nodes: List of unvisited nodes.
     :param num_iterations: Number of iterations to perform.
     :param max_input_paths: Maximum number of input paths to use for each node.
@@ -93,6 +159,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
     established_loops = 0
     new_nodes = 0
+    pending_edges = []
 
     steps = []
 
@@ -115,14 +182,29 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         # Convert relative coordinates to categorical features
         x = categorical_coordinates_encoder.transform(x).unsqueeze(0)
 
+        #track edges added during this iteration for flow-based radius adjustment
+        new_edges_this_iteration = []
+
         # Call model to generate new nodes from previously codified paths
         predicted_nodes = graph_seq_2_seq.generate(x)
-
         for new_node in predicted_nodes:
-            # Transform from classes to coordinates
-            decoded_new_node = categorical_coordinates_encoder.inverse_transform(new_node)
+            # Decode xyz classes with coordinate encoder
+            decoded_xyz = categorical_coordinates_encoder.inverse_transform(new_node[:3])
 
-            if torch.any(decoded_new_node):
+            #decode radius class with radius encoder 
+            predicted_radius = None
+            predicted_label = None
+            if len(new_node) > 3 and radius_class_encoder is not None:
+                radius_class = new_node[3].unsqueeze(0)
+                #the idea was to decode the radius into label, but if i dont convert to float, it gives error 
+                #convert predicted class to float radius 
+                predicted_radius = float(radius_class_encoder.class_to_value(radius_class).squeeze(0).item())
+                #convert predicted class to label
+                predicted_label = radius_class_encoder.inverse_transform(radius_class)
+                if isinstance(predicted_label, list):
+                    predicted_label = predicted_label[0]
+
+            if torch.any(decoded_xyz):  # Check if xyz coordinates are non-zero
                 # Check if the new node is close to an existing node.
                 nodes_list = list(generated_graph.nodes)
                 # Remove the current node from the list of nodes, so that we don't check if the new node is close to
@@ -134,8 +216,8 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                 current_node_coord = torch.tensor(np.array(generated_graph.nodes[current_node_id]['node_label']),
                                                   device=device)
 
-                # Calculate the coordinates of the new node.
-                next_node_coord = (current_node_coord + decoded_new_node)
+                # Calculate the coordinates of the new node (xyz only)
+                next_node_coord = (current_node_coord + decoded_xyz)
 
                 # Get the coordinates of all the other nodes in the graph.
                 current_graph_coordinates = torch.tensor(np.array(list(nx.get_node_attributes(generated_graph,
@@ -157,8 +239,16 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     # existing node. A new node is not added.
                     loop_node_index = torch.argmin(dist).item()
                     loop_node_id = list(nodes_list)[loop_node_index]
-                    generated_graph.add_edge(current_node_id, loop_node_id)
+                    
+                    # Add edge with radius attribute if predicted
+                    if predicted_radius is not None:
+                        generated_graph.add_edge(current_node_id, loop_node_id,
+                                                 avgRadiusAvg=predicted_radius,
+                                                 avgRadiusLabel=predicted_label)
+                    else:
+                        generated_graph.add_edge(current_node_id, loop_node_id)
 
+                    new_edges_this_iteration.append((current_node_id, loop_node_id))
                     steps += [(current_node_id, loop_node_id, None)]
                 else:
                     new_nodes += 1
@@ -167,16 +257,52 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     current_node_idx += 1
 
                     generated_graph.add_node(new_node_id, node_label=next_node_coord.tolist())
-                    generated_graph.add_edge(current_node_id, new_node_id)
+                    
+                    # Add edge with radius attribute if predicted
+                    if predicted_radius is not None:
+                        generated_graph.add_edge(current_node_id, new_node_id,
+                                                 avgRadiusAvg=predicted_radius,
+                                                 avgRadiusLabel=predicted_label)
+                    else:
+                        generated_graph.add_edge(current_node_id, new_node_id)
+                    
+                    new_edges_this_iteration.append((current_node_id, new_node_id))
                     unvisited_nodes.append(new_node_id)
 
                     steps += [(current_node_id, new_node_id, next_node_coord.tolist())]
             else:
                 break
 
+        # Collect new edges for batch flow recomputation
+        if new_edges_this_iteration:
+            pending_edges.extend(new_edges_this_iteration)
+
+        # Every 100 node expansions, recompute flows and adjust radii in batch
+        if pending_edges and (i + 1) % 100 == 0:
+            annotate_graph_with_flows(generated_graph)
+            for u, v in pending_edges:
+                if generated_graph.has_edge(u, v):
+                    edge_flow = generated_graph.edges[u, v].get('flow', 0)
+                    adjusted_radius = compute_radius_from_flow(edge_flow, u, v, generated_graph)
+                    generated_graph.edges[u, v]['avgRadiusAvg'] = adjusted_radius
+            pending_edges = []
+
         if len(unvisited_nodes) == 0:
             # No more unvisited nodes. Stop the generation process.
             break
+
+    #final flow recomputation
+    if pending_edges:
+        annotate_graph_with_flows(generated_graph)
+        for u, v in pending_edges:
+            if generated_graph.has_edge(u, v):
+                edge_flow = generated_graph.edges[u, v].get('flow', 0)
+                adjusted_radius = compute_radius_from_flow(edge_flow, u, v, generated_graph)
+                generated_graph.edges[u, v]['avgRadiusAvg'] = adjusted_radius
+
+    #identify the main vessel and annotate flows on the grown graph
+    #find_main_vessel(generated_graph)
+    generated_graph = annotate_graph_with_flows(generated_graph)
 
     return generated_graph, steps
 
@@ -240,6 +366,28 @@ def degree_analysis(nx_graph: nx.Graph):
     return fig, ax
 
 
+def edge_radius_mean_and_std(graph: nx.Graph, default_radius: float = 3.0) -> (float, float):
+    """
+    compute the average edge radius and standard deviation for edges in the graph.
+    :param graph: A networkx graph.
+    :param default_radius: Default radius if avgRadiusAvg is not present.
+    :return: (mean_radius, std_radius)
+    """
+    all_radii = []
+    for edge in graph.edges:
+        radius = graph.edges[edge].get('avgRadiusAvg', default_radius)
+        if radius is not None:
+            all_radii.append(float(radius))
+        else:
+            all_radii.append(default_radius)
+    
+    all_radii = np.array(all_radii)
+    mean_radius = np.mean(all_radii) if len(all_radii) > 0 else default_radius
+    std_radius = np.std(all_radii) if len(all_radii) > 0 else 0.0
+    
+    return mean_radius, std_radius
+
+
 def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_graph: nx.Graph) -> dict[str, float | Any]:
     """
     Compute the evaluation metric for the generated graph. Compare the average degree of the generated graph with the
@@ -273,6 +421,11 @@ def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_gra
     # Calculate the difference of density between the generated graph and the ground truth graph
     generated_graph_density = nx.density(generated_graph)
     ground_truth_graph_density = nx.density(ground_truth_graph)
+ 
+    # Average edge radius of the generated graph
+    generated_mean_radius, generated_std_radius = edge_radius_mean_and_std(generated_graph)
+    # Average edge radius of the ground truth graph
+    ground_truth_mean_radius, ground_truth_std_radius = edge_radius_mean_and_std(ground_truth_graph)
 
     # Calculate embedding representation of the generated graph
     generated_graph_embed = calculate_embedding_representation(generated_graph)
@@ -289,6 +442,8 @@ def compute_graph_comparison_metrics(generated_graph: nx.Graph, ground_truth_gra
             'density_difference': generated_graph_density - ground_truth_graph_density,
             'number_of_nodes_difference': len(generated_graph.nodes) - len(ground_truth_graph.nodes),
             'embedding_distance': np.linalg.norm(generated_graph_embed - ground_truth_graph_embed),
+            'average_radius_difference': generated_mean_radius - ground_truth_mean_radius,
+            'standard_deviation_radius_difference': generated_std_radius - ground_truth_std_radius,
         },
         'plots': {
             'generated_graph_degree_analysis': generated_graph_degree_analysis[0],

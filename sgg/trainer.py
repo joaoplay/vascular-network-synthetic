@@ -9,6 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 from sgg.evaluate import get_starting_map, generate_synthetic_graph, compute_graph_comparison_metrics
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
+from utils.radius_class_encoder import RadiusClassEncoder
 from utils.visualize import draw_3d_graph
 
 # Macros for available callbacks
@@ -21,8 +22,12 @@ class GraphSeq2SeqTrainer:
                  max_paths_for_each_reachable_node: int, max_input_path_length: int, max_output_nodes: int,
                  distance_function: Callable, max_loop_distance: int, synthetic_graph_gen_iterations: int,
                  seed_graph_depth: int, categorical_coordinates_encoder: CategoricalCoordinatesEncoder,
+                 radius_class_encoder: Optional[RadiusClassEncoder],
                  class_weights: Optional[torch.Tensor], ignore_index: Optional[int],
-                 lr: float, max_iters: int, batch_size: int, device: str):
+                 lr: float, max_iters: int, batch_size: int, device: str,
+                 xyz_class_weights: Optional[torch.Tensor] = None,
+                 radius_class_weights: Optional[torch.Tensor] = None,
+                 radius_loss_weight: Optional[float] = None):
         """
         This class offers a training loop for a Graph Sequence-to-Sequence model. It is responsible for training
         the model, while providing callbacks to perform custom actions during the training process. The metrics
@@ -59,15 +64,22 @@ class GraphSeq2SeqTrainer:
         self.synthetic_graph_gen_iterations = synthetic_graph_gen_iterations
         self.seed_graph_depth = seed_graph_depth
         self.categorical_coordinates_encoder = categorical_coordinates_encoder
+        self.radius_class_encoder = radius_class_encoder
         self.encoder_optimizer = optim.Adam(self.model.encoder.parameters(), lr=lr)
         self.decoder_optimizer = optim.Adam(self.model.decoder.parameters(), lr=lr)
-        # Use CrossEntropyLoss as the loss function. When the dataset is unbalanced, the class weights are used to
-        # penalize the loss function for the underrepresented classes.
-        class_weights = class_weights.to(device=device) if class_weights is not None else None
+        # Use separate CrossEntropy losses for spatial (xyz) and radius channels.
+        # This allows assigning a dedicated weight to vessel thickness learning.
+        base_weights = class_weights.to(device=device) if class_weights is not None else None
+        xyz_weights = xyz_class_weights.to(device=device) if xyz_class_weights is not None else base_weights
+        radius_weights = radius_class_weights.to(device=device) if radius_class_weights is not None else base_weights
 
-        print("class_weights", class_weights)
+        print("xyz_class_weights", xyz_weights)
+        print("radius_class_weights", radius_weights)
 
-        self.loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=class_weights)
+        self.xyz_loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=xyz_weights)
+        self.radius_loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=radius_weights)
+        self.radius_loss_weight = radius_loss_weight if radius_loss_weight is not None else 1.0
+        print(f"radius_loss_weight: {self.radius_loss_weight}")
         self.max_iters = max_iters
         self.device = device
 
@@ -104,12 +116,34 @@ class GraphSeq2SeqTrainer:
             batch = [t.to(self.device) for t in batch]
             x, y = batch
 
-            # Forward pass through the encoder. This is done in batches.
-            decoder_output = self.model(x, y)
-            y = y[:, -1, :, :].reshape(-1)
+            #select a random path per sample for teacher forcing and target consistency.
+            # y shape: (batch_size, n_paths, max_output_nodes, n_dimensions)
+            batch_indices = torch.arange(y.size(0), device=self.device)
+            random_path_indices = torch.randint(0, y.size(1), (y.size(0),), device=self.device)
+            y_selected_paths = y[batch_indices, random_path_indices]
 
-            # Calculate loss
-            self.last_loss_value = self.loss(decoder_output, y)
+            # Forward pass through the encoder. This is done in batches.
+            decoder_output = self.model(x, y_selected_paths)
+
+            # Calculate separate losses for spatial dimensions and radius.
+            n_dimensions = y_selected_paths.size(-1)
+            n_classes = decoder_output.size(-1)
+
+            decoder_output = decoder_output.view(-1, n_dimensions, n_classes)
+            y_target = y_selected_paths.reshape(-1, n_dimensions)
+
+            spatial_dims = min(3, n_dimensions)
+            xyz_output = decoder_output[:, :spatial_dims, :].reshape(-1, n_classes)
+            xyz_target = y_target[:, :spatial_dims].reshape(-1)
+            xyz_loss = self.xyz_loss(xyz_output, xyz_target)
+
+            if n_dimensions > 3:
+                radius_output = decoder_output[:, 3, :]
+                radius_target = y_target[:, 3]
+                radius_loss = self.radius_loss(radius_output, radius_target)
+                self.last_loss_value = xyz_loss + (self.radius_loss_weight * radius_loss)
+            else:
+                self.last_loss_value = xyz_loss
 
             self.encoder_optimizer.zero_grad()
             self.decoder_optimizer.zero_grad()
@@ -145,6 +179,7 @@ class GraphSeq2SeqTrainer:
         synth_graph, steps = generate_synthetic_graph(seed_graph=seed_graph, unvisited_nodes=unvisited_nodes,
                                                       graph_seq_2_seq=self.model,
                                                       categorical_coordinates_encoder=self.categorical_coordinates_encoder,
+                                                      radius_class_encoder=self.radius_class_encoder,
                                                       max_input_paths=self.max_input_paths,
                                                       max_paths_for_each_reachable_node=self.max_paths_for_each_reachable_node,
                                                       max_input_path_length=self.max_input_path_length,
@@ -154,10 +189,18 @@ class GraphSeq2SeqTrainer:
                                                       max_loop_distance=self.max_loop_distance, device=self.device)
 
         synth_graph = nx.convert_node_labels_to_integers(synth_graph, label_attribute='old_label')
-        fig1 = draw_3d_graph(synth_graph)
+        synth_edges_radius = [
+            float(synth_graph.edges[edge].get('avgRadiusAvg', 3.0) or 3.0)
+            for edge in synth_graph.edges()
+        ]
+        fig1 = draw_3d_graph(synth_graph, edges_radius=synth_edges_radius)
 
         seed_graph = nx.convert_node_labels_to_integers(seed_graph, label_attribute='old_label')
-        fig2 = draw_3d_graph(seed_graph)
+        seed_edges_radius = [
+            float(seed_graph.edges[edge].get('avgRadiusAvg', 3.0) or 3.0)
+            for edge in seed_graph.edges()
+        ]
+        fig2 = draw_3d_graph(seed_graph, edges_radius=seed_edges_radius)
 
         # Calculate metrics
         metrics = compute_graph_comparison_metrics(synth_graph, self.graph)
