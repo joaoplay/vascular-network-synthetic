@@ -128,7 +128,7 @@ def get_all_simple_paths_from_node(graph: nx.Graph, node_id, max_input_paths: in
     return sequence
 
 
-def generate_paths_for_node(graph: nx.graph, node_id: int, max_input_paths: int, max_paths_for_each_reachable_node: int,
+def generate_paths_for_node(graph: nx.Graph, node_id: int, max_input_paths: int, max_paths_for_each_reachable_node: int,
                             max_input_path_length: int, distance_function: Callable[[nx.Graph, int, int], List[float]],
                             max_output_nodes: int):
     """
@@ -190,7 +190,7 @@ def generate_paths_for_node(graph: nx.graph, node_id: int, max_input_paths: int,
     return training_data
 
 
-def generate_training_data_for_graph(graph: nx.graph, max_input_paths_per_node: int,
+def generate_training_data_for_graph(graph: nx.Graph, max_input_paths_per_node: int,
                                      max_paths_for_each_reachable_node: int, max_input_path_length: int,
                                      distance_function: Callable[[nx.Graph, int, int], List[float]],
                                      num_iterations: int, max_output_nodes: int):
@@ -385,9 +385,9 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
     training_sequences_to_remove = []
     training_sequences_to_add = []
     for paths in training_sequence:
-        if len(paths) > 5:  # replace 2 with max_num_input_paths
+        if len(paths) > max_input_paths_per_node:
             training_sequences_to_remove.append(paths)
-            training_sequences_to_add.extend(split_list_into_chunks(paths, 5))  # replace 2 with max_num_input_paths
+            training_sequences_to_add.extend(split_list_into_chunks(paths, max_input_paths_per_node))
 
     for ts_to_remove in training_sequences_to_remove:
         training_sequence.remove(ts_to_remove)

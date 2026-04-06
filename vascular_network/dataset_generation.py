@@ -43,8 +43,10 @@ def generate_training_graph(dataset_output_path: str, voxel_dim: list = (100.0, 
 
     # Get the degree of each node
     nodes_degree = torch.bincount(clustered_data.edge_index[0])
-    # Calculate unique degree frequencies and return counts
-    unique_degree_freq, counts = torch.unique(nodes_degree, return_counts=True)
+    # Calculate unique degree frequencies and return counts, excluding degree-0 (isolated) nodes
+    nonzero_mask = nodes_degree > 0
+    nonzero_degrees = nodes_degree[nonzero_mask]
+    unique_degree_freq, counts = torch.unique(nonzero_degrees, return_counts=True)
     # Discard degree frequencies that occur less than 5% of the time
     degree_freq = unique_degree_freq[counts > low_degree_threshold * sum(counts)]
 

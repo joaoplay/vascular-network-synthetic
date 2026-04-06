@@ -15,6 +15,7 @@ from utils.visualize import draw_3d_graph
 # Macros for available callbacks
 ON_BATCH_END = 'on_batch_end'
 ON_TRAIN_END = 'on_train_end'
+ON_EVAL_END = 'on_eval_end'
 
 
 class GraphSeq2SeqTrainer:
@@ -27,7 +28,12 @@ class GraphSeq2SeqTrainer:
                  lr: float, max_iters: int, batch_size: int, device: str,
                  xyz_class_weights: Optional[torch.Tensor] = None,
                  radius_class_weights: Optional[torch.Tensor] = None,
-                 radius_loss_weight: Optional[float] = None):
+                 radius_loss_weight: Optional[float] = None,
+                 radius_ignore_index: Optional[int] = None,
+                 scheduler_patience: int = 100,
+                 scheduler_factor: float = 0.5,
+                 min_lr: float = 1e-6,
+                 early_stop_patience: Optional[int] = None):
         """
         This class offers a training loop for a Graph Sequence-to-Sequence model. It is responsible for training
         the model, while providing callbacks to perform custom actions during the training process. The metrics
@@ -50,6 +56,7 @@ class GraphSeq2SeqTrainer:
         :param max_iters: The maximum training iterations
         :param batch_size: The batch size
         :param device: The device to be used for training
+        :param radius_ignore_index: The index to be ignored in the radius loss calculation
         """
         self.model: GraphSeq2Seq = model
         self.train_dataset = train_dataset
@@ -67,17 +74,23 @@ class GraphSeq2SeqTrainer:
         self.radius_class_encoder = radius_class_encoder
         self.encoder_optimizer = optim.Adam(self.model.encoder.parameters(), lr=lr)
         self.decoder_optimizer = optim.Adam(self.model.decoder.parameters(), lr=lr)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.encoder_optimizer, mode='min', factor=scheduler_factor,
+            patience=scheduler_patience, min_lr=min_lr)
+        self.min_lr = min_lr
+        self.early_stop_patience = early_stop_patience
+        self._best_loss = float('inf')
+        self._patience_counter = 0
+        self._should_stop = False
         # Use separate CrossEntropy losses for spatial (xyz) and radius channels.
         # This allows assigning a dedicated weight to vessel thickness learning.
-        base_weights = class_weights.to(device=device) if class_weights is not None else None
-        xyz_weights = xyz_class_weights.to(device=device) if xyz_class_weights is not None else base_weights
-        radius_weights = radius_class_weights.to(device=device) if radius_class_weights is not None else base_weights
+        xyz_weights = xyz_class_weights.to(device=device) 
+        radius_weights = radius_class_weights.to(device=device) 
 
         print("xyz_class_weights", xyz_weights)
         print("radius_class_weights", radius_weights)
-
         self.xyz_loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=xyz_weights)
-        self.radius_loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=radius_weights)
+        self.radius_loss = nn.CrossEntropyLoss(ignore_index=radius_ignore_index, weight=radius_weights)
         self.radius_loss_weight = radius_loss_weight if radius_loss_weight is not None else 1.0
         print(f"radius_loss_weight: {self.radius_loss_weight}")
         self.max_iters = max_iters
@@ -153,8 +166,33 @@ class GraphSeq2SeqTrainer:
             self.encoder_optimizer.step()
             self.decoder_optimizer.step()
 
+            # Convert to scalar to free computation graph
+            self.last_loss_value = self.last_loss_value.item()
+
+            
+            self.scheduler.step(self.last_loss_value)
+            current_lr = self.encoder_optimizer.param_groups[0]['lr']
+            for pg in self.decoder_optimizer.param_groups:
+                pg['lr'] = current_lr
+
+            # Early stopping check
+            if self.early_stop_patience is not None:
+                if self.last_loss_value < self._best_loss:
+                    self._best_loss = self.last_loss_value
+                    self._patience_counter = 0
+                else:
+                    self._patience_counter += 1
+                    if self._patience_counter >= self.early_stop_patience:
+                        print(f'Early stopping at iteration {self.iter_num}. '
+                              f'Best loss: {self._best_loss:.6f}, '
+                              f'Current loss: {self.last_loss_value:.6f}')
+                        self._should_stop = True
+
             # Trigger ON_BATCH_END callbacks
             self.trigger_callbacks(ON_BATCH_END)
+
+            if self._should_stop:
+                break
 
             if self.max_iters is not None and self.iter_num > self.max_iters:
                 # The maximum number of iterations has been reached. Stop the training.

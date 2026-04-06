@@ -12,7 +12,7 @@ class GraphEncoderRNN(torch.nn.Module):
     """
 
     def __init__(self, n_dimensions: int, n_classes: int, hidden_size: int, num_layers: int, embedding_size: int,
-                 is_bidirectional: bool) -> None:
+                 is_bidirectional: bool, n_extra_classes: int = 8) -> None:
         """
         :param n_dimensions: Can be 3D or 2D. Currently, most of the code is written for 3D, although it should be
                              this module is already prepared for 2D.
@@ -21,6 +21,7 @@ class GraphEncoderRNN(torch.nn.Module):
         :param num_layers: Number of layers of the GRU
         :param embedding_size: Size of the embedding vector
         :param is_bidirectional: Whether the GRU is bidirectional or not
+        :param n_extra_classes: Number of classes for radius
         """
         super().__init__()
         self.n_dimensions = n_dimensions
@@ -29,11 +30,8 @@ class GraphEncoderRNN(torch.nn.Module):
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.is_bidirectional = is_bidirectional
-
-        #use separate embeddings for spatial coordinates (xyz) and radius and other 
-        #extra features incase we want to add more 
         self.spatial_embedding = nn.Embedding(n_classes, embedding_size)
-        self.extra_embedding = nn.Embedding(n_classes, embedding_size) if self.extra_dims > 0 else None
+        self.extra_embedding = nn.Embedding(n_extra_classes, embedding_size) 
 
         # Create a GRU as encoder. The input size is an embedding representation for each dimension (3 when in 3D)
         self.encoder = nn.GRU(input_size=embedding_size * n_dimensions, hidden_size=hidden_size,
@@ -77,7 +75,7 @@ class GraphDecoderRNN(nn.Module):
     """
 
     def __init__(self, n_dimensions: int, n_classes: int, hidden_size: int, num_layers: int, embedding_size: int,
-                 is_bidirectional: bool) -> None:
+                 is_bidirectional: bool, n_extra_classes: int = 8) -> None:
         """
         :param n_dimensions: Can be 3D or 2D. Currently, most of the code is written for 3D, although it should be
                              this module is already prepared for 2D.
@@ -85,6 +83,7 @@ class GraphDecoderRNN(nn.Module):
         :param hidden_size: Size of the hidden state of the GRU
         :param num_layers: Number of layers of the GRU
         :param embedding_size: Size of the embedding vector
+        :param n_extra_classes: Number of classes for radius
         """
         super().__init__()
         self.hidden_size = hidden_size
@@ -94,10 +93,11 @@ class GraphDecoderRNN(nn.Module):
         self.n_dimensions = n_dimensions
         self.spatial_dims = min(3, n_dimensions)
         self.extra_dims = max(0, n_dimensions - self.spatial_dims) #incase we want to add more features other than radius
+        self.n_extra_classes = n_extra_classes
 
         #use separate embeddings for spatial coordinates (xyz) and radius and any other future feature
         self.spatial_embedding = nn.Embedding(n_classes, embedding_size)
-        self.extra_embedding = nn.Embedding(n_classes, embedding_size) if self.extra_dims > 0 else None
+        self.extra_embedding = nn.Embedding(n_extra_classes, embedding_size)
         # Init a GRU as decoder
         self.decoder = nn.GRU(input_size=embedding_size * n_dimensions, hidden_size=hidden_size,
                               num_layers=self.num_layers, bias=True, batch_first=True, dropout=0,
@@ -149,8 +149,8 @@ class GraphSeq2Seq(nn.Module):
     predicts the position of next nodes in relation to the current active node.
     """
 
-    def __init__(self, n_classes, max_output_nodes, n_dimensions=3, hidden_size=512, num_layers=4, embedding_size=200,
-                 is_bidirectional=True, device='cpu') -> None:
+    def __init__(self, n_classes, max_output_nodes, n_dimensions=3, n_extra_classes=8, hidden_size=512, num_layers=4,
+                 embedding_size=200, is_bidirectional=True, device='cpu') -> None:
         """
         :param n_classes: Number of classes to be used to discretize the spatial relative coordinates
         :param max_output_nodes: Maximum number of nodes. It corresponds to the maximum number of iterations through
@@ -166,6 +166,7 @@ class GraphSeq2Seq(nn.Module):
         super().__init__()
         self.n_dimensions = n_dimensions
         self.n_classes = n_classes
+        self.n_extra_classes = n_extra_classes
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.embedding_size = embedding_size
@@ -175,9 +176,9 @@ class GraphSeq2Seq(nn.Module):
 
         # Initialize encoder and decoder
         self.encoder = GraphEncoderRNN(n_dimensions, n_classes, hidden_size, num_layers, embedding_size,
-                                       is_bidirectional).to(device)
+                                       is_bidirectional, n_extra_classes=n_extra_classes).to(device)
         self.decoder = GraphDecoderRNN(n_dimensions, n_classes, hidden_size, num_layers, embedding_size,
-                                       is_bidirectional).to(device)
+                                       is_bidirectional, n_extra_classes=n_extra_classes).to(device)
         #layernorm to normalize aggregated hidden states per-layer across hidden_size
         self.hidden_layer_norm = nn.LayerNorm(hidden_size).to(device)
 
@@ -245,7 +246,7 @@ class GraphSeq2Seq(nn.Module):
             decoder_input = torch.cat([decoder_start_input, teacher_forcing_steps], dim=1)
             # Note that the aggregated context is being passed to the decoder
             decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
-            decoder_output = decoder_output.view(-1, self.n_classes)
+            # Return shape: (batch_size, seq_len, n_dimensions, n_classes) for trainer to reshape properly
         else:
             # INFERENCE: Sample classes for each dimension from multinomial distributions.
             decoder_input = decoder_start_input
@@ -255,6 +256,11 @@ class GraphSeq2Seq(nn.Module):
                 # output
                 decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
                 step_logits = decoder_output[:, -1, :, :]  # (batch_size, n_dimensions, n_classes)
+
+                # Mask invalid classes for radius before softmax
+                if self.n_dimensions > 3:
+                    step_logits[:, 3:, self.n_extra_classes:] = float('-inf')
+
                 step_probs = step_logits.softmax(dim=2)
 
                 sampled_indices = torch.multinomial(

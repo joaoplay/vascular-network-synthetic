@@ -155,8 +155,9 @@ class GraphDataGenerator:
             #keep padding/unknown values aligned with ignore_index convention 
             #if i dont do this, the model gives out of bounds errors ???
             #---------------------------------------------------------------
-            encoded_input_radius[input_radius_nan_mask] = self.num_classes
-            encoded_prediction_radius[prediction_radius_nan_mask] = self.num_classes
+            RADIUS_IGNORE_INDEX = radius_class_encoder.n_classes  
+            encoded_input_radius[input_radius_nan_mask] = RADIUS_IGNORE_INDEX
+            encoded_prediction_radius[prediction_radius_nan_mask] = RADIUS_IGNORE_INDEX
             #didnt understand this bit, i used copilot to help me here 
             #---------------------------------------------------------------
 

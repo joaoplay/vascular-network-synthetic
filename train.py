@@ -8,7 +8,7 @@ from torch.utils.data import TensorDataset
 
 from settings import OUTPUT_PATH, CHECKPOINTS_DIR_NAME, PROCESSED_DATA_DIR_NAME, WANDB_PROJECT_NAME, \
     MODELS_DIR_NAME
-from sgg.callbacks import evaluate_callback, save_checkpoint_callback, log_loss_callback
+from sgg.callbacks import evaluate_callback, save_checkpoint_callback, log_loss_callback, save_best_checkpoint_callback
 from sgg.data import get_signed_distance_between_nodes
 from sgg.evaluate import degree_analysis
 from sgg.graph_data_generator import GraphDataGenerator
@@ -86,7 +86,13 @@ def train_model(cfg: DictConfig):
     # Compute class weights separately for xyz and radius channels.
     spatial_dims = min(3, feature_dim)
     xyz_class_weights = compute_class_weights(data_y[..., :spatial_dims], cfg.num_classes + 1)
-    radius_class_weights = compute_class_weights(data_y[..., 3], cfg.num_classes + 1) if feature_dim > 3 else None
+    n_radius_classes = radius_class_encoder.n_classes + 1  # +1 for ignore/padding index
+    if feature_dim > 3:
+        radius_class_weights = torch.zeros(cfg.num_classes + 1)
+        real_weights = compute_class_weights(data_y[..., 3], n_radius_classes)
+        radius_class_weights[:n_radius_classes] = real_weights
+    else:
+        radius_class_weights = None
 
     # Compute radius loss weight
     if radius_class_weights is not None:
@@ -112,7 +118,8 @@ def train_model(cfg: DictConfig):
 
     # Init a new GraphSeq2Seq model
     model = GraphSeq2Seq(n_classes=cfg.num_classes + 1, max_output_nodes=cfg.paths.max_output_nodes,
-                         n_dimensions=feature_dim, device=device, **cfg.model)
+                         n_dimensions=feature_dim, n_extra_classes=radius_class_encoder.n_classes + 1,
+                         device=device, **cfg.model)
 
     # Init a trainer for the GraphSeq2Seq model
     trainer = GraphSeq2SeqTrainer(model=model, train_dataset=dataset, graph=training_graph,
@@ -124,12 +131,15 @@ def train_model(cfg: DictConfig):
                                   radius_class_weights=radius_class_weights,
                                   radius_loss_weight=radius_loss_weight,
                                   ignore_index=cfg.num_classes, **cfg.evaluator,
-                                  **cfg.paths, **cfg.trainer)
+                                  **cfg.paths, **cfg.trainer,
+                                  radius_ignore_index=radius_class_encoder.n_classes)
+    
 
     # Add a set of callbacks to: print the training loss; generate a synthetic graph and perform a comparison
     # with the validation data; save the model to a checkpoint file.
     trainer.add_callback(ON_BATCH_END, log_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
     trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters, output_dir=hydra_cwd)
+    trainer.add_callback(ON_BATCH_END, save_best_checkpoint_callback, checkpoint_save_path=checkpoints_dir)
     trainer.add_callback(ON_TRAIN_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,
                          checkpoint_save_path=checkpoints_dir, save_checkpoint_at_the_end=cfg.save_at_the_end)
 

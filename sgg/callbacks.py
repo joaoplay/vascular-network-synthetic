@@ -19,12 +19,11 @@ def evaluate_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, output_d
 
         metrics, _ = trainer.evaluate()
         print(f'Validation metrics: {metrics["metrics"]}')
-        # Log validation metrics to wandb
-        wandb.log(metrics['metrics'])
+        log_dict = dict(metrics['metrics'])
         plots = metrics['plots']
-        # Send plots to wandb
         for plot_label, plot in plots.items():
-            wandb.log({f'{plot_label}': plot})
+            log_dict[plot_label] = plot
+        wandb.log(log_dict)
 
         # Save interactive HTML visualizations
         if output_dir is not None:
@@ -56,11 +55,30 @@ def save_checkpoint_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, c
 
 def log_loss_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
     """
-    This callback logs the loss to wandb
+    This callback logs the loss and learning rate to wandb
     :param trainer: A GraphSeq2SeqTrainer model
     :param every_n_iters: How often to log the loss to wandb
     :return:
     """
     if trainer.iter_num % every_n_iters == 0:
-        print(f"Loss: {trainer.last_loss_value.item()}")
-        wandb.log({f'Loss': trainer.last_loss_value.item()})
+        current_lr = trainer.encoder_optimizer.param_groups[0]['lr']
+        print(f"Loss: {trainer.last_loss_value} | LR: {current_lr:.2e}")
+        wandb.log({'Loss': trainer.last_loss_value, 'learning_rate': current_lr})
+
+
+def save_best_checkpoint_callback(trainer: GraphSeq2SeqTrainer, checkpoint_save_path: str):
+    """
+    This callback saves the best model checkpoint whenever early stopping detects an improvement,
+    and logs early stopping metrics to wandb.
+    :param trainer: A GraphSeq2SeqTrainer model
+    :param checkpoint_save_path: The path to save the best model checkpoint
+    :return:
+    """
+    if trainer.early_stop_patience is None:
+        return
+
+    # Save when patience counter was just reset (new best loss)
+    if trainer._patience_counter == 0:
+        best_path = os.path.join(checkpoint_save_path, 'checkpoint_best.pt')
+        trainer.save_checkpoint(best_path)
+        print(f'New best loss: {trainer._best_loss:.6f}. Saved best checkpoint.')

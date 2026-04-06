@@ -6,25 +6,27 @@ from sgg.radius_classes import R_EDGES
 class RadiusClassEncoder:
     """
     Encodes continuous radius values into discrete classes using different thresholds.
-    - Class 0: radius < 1.0
-    - Class 1: 1.0 <= r < 2.0
-    - Class 2: 2.0 <= r < 3.0
-    - Class 3: 3.0 <= r < 5.0
-    - Class 4: 5.0 <= r < 9.0
-    - Class 5: r >= 9.0
+    - Class 0: r < 2.0
+    - Class 1: 2.0 <= r < 3.0
+    - Class 2: 3.0 <= r < 4.0
+    - Class 3: 4.0 <= r < 5.0
+    - Class 4: 5.0 <= r < 7.0
+    - Class 5: 7.0 <= r < 10.0
+    - Class 6: r >= 10.0
     """
     
     def __init__(self, top_class_max: float = 38.0):
         self.r_edges = np.array(R_EDGES, dtype=np.float32)
-        self.n_classes = len(self.r_edges) + 1  # 6 classes for 5 edges    
+        self.n_classes = len(self.r_edges) + 1
         self.top_class_max = float(top_class_max)
+
     def transform(self, radius_data: torch.Tensor):
         """
         Convert continuous radius values to discrete class indices.
         :param radius_data: tensor of radius values
         :return: tensor of class indices
         """
-        #kept breaking when i tried this with cuda
+
         is_tensor = isinstance(radius_data, torch.Tensor)
         if not is_tensor:
             radius_data = torch.tensor(radius_data)
@@ -35,13 +37,13 @@ class RadiusClassEncoder:
             radius_data = radius_data.float()
 
         edges = torch.as_tensor(self.r_edges, dtype=radius_data.dtype, device=device)
-        class_indices = torch.searchsorted(edges, radius_data)
+        class_indices = torch.searchsorted(edges, radius_data.contiguous())
         class_indices = class_indices.clamp(0, self.n_classes - 1).long()
 
         return class_indices
     
     def inverse_transform(self, class_indices):
-        labels = ['tiny', 'small', 'medium', 'normal', 'large', 'huge']
+        labels = ['tiny', 'small', 'medium', 'normal', 'large', 'big', 'huge']
 
         if isinstance(class_indices, torch.Tensor):
             class_indices = class_indices.detach().cpu().numpy()
@@ -52,9 +54,6 @@ class RadiusClassEncoder:
         #if its a scalar, return a string, otherwise, return a list
         return result.item() if result.shape == () else result.tolist()
 
-    #i wanted the class to be a label in the inverse
-    #but i kept having errors in lists expecting squeeze and didnt know how to fix so i created this function below
-    #and it fixed
     def class_to_value(self, class_indices):
         """
         Convert class indices to a radius value
@@ -67,20 +66,18 @@ class RadiusClassEncoder:
         else:
             idx = np.asarray(class_indices).astype(int)
 
+        idx = np.clip(idx, 0, self.n_classes - 1)
         edges = self.r_edges
         top = self.top_class_max
 
-        def idx_to_val(k):
-            if k <= 0:
-                return float(edges[0] / 2.0)
-            if k < len(edges):
-                return float((edges[k - 1] + edges[k]) / 2.0)
-            return float((edges[-1] + top) / 2.0)
-        
+        # Build bin bounds: [0, edges[0]), [edges[0], edges[1]), ..., [edges[-1], top]
+        lo = np.concatenate([[0.0], edges])
+        hi = np.concatenate([edges, [top]])
 
-        # vectorize
-        flat = np.asarray([idx_to_val(int(k)) for k in np.ravel(idx)], dtype=np.float32)
-        flat = flat.reshape(idx.shape)
+        flat_idx = np.ravel(idx)
+        flat = np.array([
+            np.random.uniform(lo[k], hi[k]) for k in flat_idx
+        ], dtype=np.float32).reshape(idx.shape)
 
         if is_tensor:
             return torch.tensor(flat, device=device, dtype=torch.float32)

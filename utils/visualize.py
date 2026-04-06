@@ -54,8 +54,8 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
         for edge in edge_list
     ]
 
-    # Choose 6 distinguishable colors per class (R_EDGES has 5 boundaries => 6 classes)
-    color_map = ["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728", "#9467bd", "#8c564b"]
+    # Choose 7 distinguishable colors per class (R_EDGES has 6 boundaries => 7 classes)
+    color_map = ["#1f77b4", "#17becf", "#2ca02c", "#bcbd22", "#ff7f0e", "#d62728", "#9467bd"]
     r_edges = np.array(R_EDGES, dtype=float)
 
     for edge_idx, edge in enumerate(edge_list):
@@ -80,7 +80,7 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
 
     trace_edges = []
     shown_classes = set()
-    labels = ['tiny', 'small', 'medium', 'normal', 'large', 'huge']
+    labels = ['tiny', 'small', 'medium', 'normal', 'large', 'big', 'huge']
 
     for edge_idx in range(0, len(edge_list)):
         x_edge = [x_edges[edge_idx * 3], x_edges[edge_idx * 3 + 1], None]
@@ -110,16 +110,39 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
             trace_nodes.append(go.Scatter3d(x=group['nodes_x'], y=group['nodes_y'], z=group['nodes_z'], mode='markers',
                                             marker=dict(symbol='circle', size=2, color=group['color']),
                                             opacity=group['opacity']
-                                            # line=dict(color='black', width=0.5)),
                                             ))
     else:
-        # Create a trace for the nodes
-        #is it possible to have different colors for nodes based on their attributes? If so, we can implement that here.
-        #joao can you look at this please ? :)
-        trace_nodes.append(go.Scatter3d(x=x_nodes, y=y_nodes, z=z_nodes, mode='markers',
-                                        marker=dict(symbol='circle', size=2, color='lightgreen'),
-                                        # line=dict(color='black', width=0.5)),
-                                        ))
+        # Separate nodes by type: input (red), output (blue), regular (lightgreen)
+        node_types = nx.get_node_attributes(nx_graph, 'node_type')
+        input_nodes = [n for n, t in node_types.items() if t == 'input']
+        output_nodes = [n for n, t in node_types.items() if t == 'output']
+        regular_nodes = [n for n in range(len(coordinates_by_node)) if n not in input_nodes and n not in output_nodes]
+
+        if regular_nodes:
+            trace_nodes.append(go.Scatter3d(
+                x=[coordinates_by_node[n][0] for n in regular_nodes],
+                y=[coordinates_by_node[n][1] for n in regular_nodes],
+                z=[coordinates_by_node[n][2] for n in regular_nodes],
+                mode='markers', marker=dict(symbol='circle', size=2, color='lightgreen'),
+                name='Nodes', showlegend=False))
+
+        if input_nodes:
+            trace_nodes.append(go.Scatter3d(
+                x=[coordinates_by_node[n][0] for n in input_nodes],
+                y=[coordinates_by_node[n][1] for n in input_nodes],
+                z=[coordinates_by_node[n][2] for n in input_nodes],
+                mode='markers', marker=dict(symbol='diamond', size=6, color='red'),
+                name='Input', showlegend=True,
+                hovertemplate='<b>Input Node</b><extra></extra>'))
+
+        if output_nodes:
+            trace_nodes.append(go.Scatter3d(
+                x=[coordinates_by_node[n][0] for n in output_nodes],
+                y=[coordinates_by_node[n][1] for n in output_nodes],
+                z=[coordinates_by_node[n][2] for n in output_nodes],
+                mode='markers', marker=dict(symbol='diamond', size=6, color='blue'),
+                name='Output', showlegend=True,
+                hovertemplate='<b>Output Node</b><extra></extra>'))
 
     axis = dict(showbackground=False, showline=False, zeroline=False, showgrid=False, showticklabels=True, title='')
 

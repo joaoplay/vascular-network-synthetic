@@ -340,7 +340,7 @@ def estimate_flows(graph: nx.Graph,
                 if knowntyp[inod] in (1, 2):
                     x0[nodelambda[inod]] = lambdas[inod]
 
-            x, info = conjugate_gradient(A_csr, b, x0=x0, tol=constants.tolerance,
+            x, info = conjugate_gradient(A_csr, b, x0=x0, rtol=constants.tolerance,
                                          maxiter=constants.max_cg_iterations)
 
             #recover nodal pressures and lambdas

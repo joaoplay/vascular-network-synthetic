@@ -48,7 +48,8 @@ def evaluate_model(cfg: DictConfig):
 
     # Init a new GraphSeq2Seq model
     model = GraphSeq2Seq(n_classes=cfg.num_classes + 1, max_output_nodes=cfg.paths.max_output_nodes,
-                         n_dimensions=feature_dim, device=device, **cfg.model)
+                         n_dimensions=feature_dim, n_extra_classes=radius_class_encoder.n_classes + 1,
+                         device=device, **cfg.model)
 
     # Init a trainer for the GraphSeq2Seq model. We don't specify a train dataset nor class weights because we are
     # using the trainer only for evaluation purposes.

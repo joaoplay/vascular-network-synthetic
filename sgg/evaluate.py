@@ -7,7 +7,6 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from nodevectors import GGVec
-
 from sgg.data import generate_training_samples_for_node
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
@@ -180,7 +179,16 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         x = torch.Tensor(x).to(device=device)
 
         # Convert relative coordinates to categorical features
-        x = categorical_coordinates_encoder.transform(x).unsqueeze(0)
+        feature_dim = x.shape[-1]
+        x_xyz = categorical_coordinates_encoder.transform(x[..., :3])
+        if feature_dim > 3 and radius_class_encoder is not None:
+            x_radius = radius_class_encoder.transform(x[..., 3])
+            nan_mask = torch.isnan(x[..., 3])
+            x_radius[nan_mask] = radius_class_encoder.n_classes
+            x_encoded = torch.cat([x_xyz, x_radius.unsqueeze(-1)], dim=-1)
+        else:
+            x_encoded = x_xyz
+        x = x_encoded.unsqueeze(0)
 
         #track edges added during this iteration for flow-based radius adjustment
         new_edges_this_iteration = []
