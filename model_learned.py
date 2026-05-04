@@ -22,13 +22,8 @@ from sgg.graph_data_generator import GraphDataGenerator
 from sgg.model import GraphSeq2Seq
 from vascular_network.dataset_generation import generate_training_graph
 
-# ---------------------------------------------------------------------------
-# Configuration — must match the values used when the checkpoint was saved
-# ---------------------------------------------------------------------------
-
 DEVICE = torch.device("cpu")
 
-# Architecture (mirrors configs/model/model_1.yaml)
 MODEL_CFG = dict(
     hidden_size=512,
     num_layers=4,
@@ -36,9 +31,6 @@ MODEL_CFG = dict(
     is_bidirectional=True,
 )
 
-# Preprocessing params (mirrors configs/paths/paths_4_2_5_10.yaml + default_config.yaml).
-# max_output_nodes is intentionally absent — it is derived at runtime from the
-# training graph's maximum node degree, exactly as train.py does.
 DATA_CFG = dict(
     max_input_paths=4,
     max_paths_for_each_reachable_node=2,
@@ -48,16 +40,12 @@ DATA_CFG = dict(
     remove_duplicates=True,
 )
 
-# Generation params (mirrors configs/evaluator/evaluator_1.yaml)
 GEN_CFG = dict(
-    seed_graph_depth=6,       # depth of the BFS seed subgraph
-    num_iterations=3000,      # max expansion steps
-    max_loop_distance=1.0,    # µm threshold to close a loop instead of adding a new node
+    seed_graph_depth=6,      
+    num_iterations=3000,     
+    max_loop_distance=1.0,    
 )
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def find_best_checkpoint(outputs_root: str) -> str:
     """Return the path to the most recently modified checkpoint_best.pt."""
@@ -91,7 +79,6 @@ def load_encoders(full_graph: nx.Graph, preprocessed_data_dir: str):
         **DATA_CFG,
     )
     _, data_y, coord_encoder, radius_encoder = generator.load()
-    # Confirm from the actual cached tensor shape (dim 2 = max_output_nodes)
     max_output_nodes = data_y.shape[2]
     print(f"Encoders loaded. max_output_nodes from data: {max_output_nodes}")
     return coord_encoder, radius_encoder, max_output_nodes
@@ -116,9 +103,6 @@ def load_model(checkpoint_path: str, max_output_nodes: int, n_radius_classes: in
     )
     return model
 
-# ---------------------------------------------------------------------------
-# Visualisation
-# ---------------------------------------------------------------------------
 
 def _make_cylinder_mesh(p0, p1, radius, n_sides=8):
     axis = p1 - p0
@@ -216,17 +200,13 @@ def save_to_html(graph: nx.Graph, original_edges: set, filename: str = "vascular
 if __name__ == "__main__":
     preprocessed_data_dir = os.path.join(OUTPUT_PATH, f"{PROCESSED_DATA_DIR_NAME}/")
 
-    # 1. Load the training graph (needed for encoder cache key and seed)
     full_graph, _ = generate_training_graph(OUTPUT_PATH)
 
-    # 2. Load fitted encoders; infer max_output_nodes from the cached data shape
     coord_encoder, radius_encoder, max_output_nodes = load_encoders(full_graph, preprocessed_data_dir)
 
-    # 3. Auto-find and load the best checkpoint
     checkpoint_path = find_best_checkpoint("outputs/")
     model = load_model(checkpoint_path, max_output_nodes, radius_encoder.n_classes)
 
-    # 4. Build seed graph (BFS subgraph of depth seed_graph_depth)
     seed_graph, unvisited = get_starting_map(full_graph, depth=GEN_CFG["seed_graph_depth"])
     largest_cc = max(nx.connected_components(seed_graph), key=len)
     seed_graph = seed_graph.subgraph(largest_cc).copy()
@@ -236,7 +216,6 @@ if __name__ == "__main__":
     print(f"Seed graph: {len(seed_graph.nodes())} nodes, {len(seed_graph.edges())} edges")
     print(f"Unvisited frontier nodes: {len(unvisited)}")
 
-    # 5. Generate the full vascular network
     generated_graph, _ = generate_synthetic_graph(
         seed_graph=seed_graph,
         graph_seq_2_seq=model,
@@ -257,5 +236,4 @@ if __name__ == "__main__":
     print(f"Generated graph: {len(generated_graph.nodes())} nodes, {len(generated_graph.edges())} edges")
     print(f"New nodes added: {new_nodes}")
 
-    # 6. Save interactive 3-D HTML
     save_to_html(generated_graph, original_edges, filename="vascular_network_generated.html")
