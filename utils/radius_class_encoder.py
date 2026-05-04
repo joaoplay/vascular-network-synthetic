@@ -5,17 +5,17 @@ from sgg.radius_classes import R_EDGES
 
 class RadiusClassEncoder:
     """
-    Encodes continuous radius values into discrete classes using different thresholds.
-    - Class 0: r < 2.0
-    - Class 1: 2.0 <= r < 3.0
-    - Class 2: 3.0 <= r < 4.0
-    - Class 3: 4.0 <= r < 5.0
-    - Class 4: 5.0 <= r < 7.0
-    - Class 5: 7.0 <= r < 10.0
-    - Class 6: r >= 10.0
+    Encodes continuous radius values into discrete classes using R_EDGES = [1, 2, 3, 4, 5, 6].
+    - Class 0: r < 1
+    - Class 1: 1 <= r < 2
+    - Class 2: 2 <= r < 3
+    - Class 3: 3 <= r < 4
+    - Class 4: 4 <= r < 5
+    - Class 5: 5 <= r < 6
+    - Class 6: r >= 6
     """
     
-    def __init__(self, top_class_max: float = 38.0):
+    def __init__(self, top_class_max: float = 8.8):
         self.r_edges = np.array(R_EDGES, dtype=np.float32)
         self.n_classes = len(self.r_edges) + 1
         self.top_class_max = float(top_class_max)

@@ -9,11 +9,8 @@ packages = [{include = "vascular_net_synth"}]
 [tool.poetry.dependencies]
 python = "~3.10"
 torch = "1.13.0"
-torch-geometric = "^2.2.0"
-torch-scatter = "^2.0.9"
-torch-sparse = "^0.6.16"
-torch-cluster = "^1.6.0"
-networkx = "==2.8.8"
+torch-geometric = "2.7.0"
+networkx = "2.8.8"
 numpy = "^1.24.1"
 wandb = "^0.13.9"
 plotly = "^5.12.0"
@@ -23,9 +20,11 @@ pygments = "*"
 pandas = "*"
 hydra-core = "^1.3.2"
 nodevectors = "^0.1.23"
-
+pyvista = "^0.47.1"
+trame = "^3.12.0"
+trame-vtk = "^2.11.6"
+trame-vuetify = "^3.2.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-

@@ -6,12 +6,11 @@ import networkx as nx
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from nodevectors import GGVec
 from sgg.data import generate_training_samples_for_node
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.embedding import calculate_embedding_representation
-from utils.flow_estimate import annotate_graph_with_flows, compute_radius_from_flow
+from utils.flow_estimate import annotate_graph_with_flows
 from utils.radius_class_encoder import RadiusClassEncoder
 
 
@@ -117,10 +116,6 @@ def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
     unvisited_nodes = [node_idx for node_idx in starting_map.nodes() if nx.degree(starting_map, node_idx) == 1]
     unvisited_nodes.remove(start_node_id)
 
-    # Identify the main vessel and annotate flows
-    find_main_vessel(starting_map)
-    annotate_graph_with_flows(starting_map)
-
     return starting_map, unvisited_nodes
 
 
@@ -164,7 +159,11 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
 
     for i in range(num_iterations):
         # Pick an unvisited node. This is the node to be expanded.
+
         current_node_id = unvisited_nodes.pop(0)
+
+        
+
 
         # Perform random walks from the current node and generate the encoded input paths
         x, _ = generate_training_samples_for_node(generated_graph, current_node_id, max_input_paths,
@@ -178,109 +177,103 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         # Move to the correct device
         x = torch.Tensor(x).to(device=device)
 
-        # Convert relative coordinates to categorical features
+        # Convert relative coordinates to categorical features and radius to class
         feature_dim = x.shape[-1]
         x_xyz = categorical_coordinates_encoder.transform(x[..., :3])
-        if feature_dim > 3 and radius_class_encoder is not None:
-            x_radius = radius_class_encoder.transform(x[..., 3])
-            nan_mask = torch.isnan(x[..., 3])
-            x_radius[nan_mask] = radius_class_encoder.n_classes
-            x_encoded = torch.cat([x_xyz, x_radius.unsqueeze(-1)], dim=-1)
-        else:
-            x_encoded = x_xyz
+        x_radius = radius_class_encoder.transform(x[..., 3])
+        nan_mask = torch.isnan(x[..., 3])
+        x_radius[nan_mask] = radius_class_encoder.n_classes
+        x_encoded = torch.cat([x_xyz, x_radius.unsqueeze(-1)], dim=-1)
         x = x_encoded.unsqueeze(0)
 
-        #track edges added during this iteration for flow-based radius adjustment
-        new_edges_this_iteration = []
 
         # Call model to generate new nodes from previously codified paths
         predicted_nodes = graph_seq_2_seq.generate(x)
-        for new_node in predicted_nodes:
+
+        for node_idx, new_node in enumerate(predicted_nodes):
+
+            new_node = new_node.view(-1)
             # Decode xyz classes with coordinate encoder
             decoded_xyz = categorical_coordinates_encoder.inverse_transform(new_node[:3])
 
-            #decode radius class with radius encoder 
-            predicted_radius = None
-            predicted_label = None
-            if len(new_node) > 3 and radius_class_encoder is not None:
-                radius_class = new_node[3].unsqueeze(0)
-                #the idea was to decode the radius into label, but if i dont convert to float, it gives error 
-                #convert predicted class to float radius 
-                predicted_radius = float(radius_class_encoder.class_to_value(radius_class).squeeze(0).item())
-                #convert predicted class to label
-                predicted_label = radius_class_encoder.inverse_transform(radius_class)
-                if isinstance(predicted_label, list):
-                    predicted_label = predicted_label[0]
+            radius_class = new_node[3].unsqueeze(0)
+            #the idea was to decode the radius into label, but if i dont convert to float, it gives error 
+            #convert predicted class to float radius 
+            predicted_radius = float(radius_class_encoder.class_to_value(radius_class).squeeze(0).item())
+            predicted_label = radius_class_encoder.inverse_transform(radius_class)
+            if isinstance(predicted_label, list):
+                predicted_label = predicted_label[0]
 
-            if torch.any(decoded_xyz):  # Check if xyz coordinates are non-zero
-                # Check if the new node is close to an existing node.
-                nodes_list = list(generated_graph.nodes)
-                # Remove the current node from the list of nodes, so that we don't check if the new node is close to
-                # itself.
-                current_node_index = nodes_list.index(current_node_id)
-                nodes_list.pop(current_node_index)
+            # Skip zero-displacement predictions — the model may predict zero_class
+            # (which decodes to 0.0) as a degenerate output. Don't stop; just skip.
+            # max_output_nodes is the hard limit on nodes per expansion.
+            if not torch.any(decoded_xyz):
+                continue
 
-                # Get the coordinates of the current node.
-                current_node_coord = torch.tensor(np.array(generated_graph.nodes[current_node_id]['node_label']),
-                                                  device=device)
+            # Check if the new node is close to an existing node.
+            nodes_list = list(generated_graph.nodes)
+            current_node_index = nodes_list.index(current_node_id)
+            nodes_list.pop(current_node_index)
 
-                # Calculate the coordinates of the new node (xyz only)
-                next_node_coord = (current_node_coord + decoded_xyz)
+            # Get the coordinates of the current node.
+            current_node_label = generated_graph.nodes[current_node_id]['node_label']
+            flat_current_label = np.array(current_node_label).flatten()
+            current_node_coord = torch.tensor(flat_current_label[:3], dtype=torch.float32, device=device)
+            decoded_xyz = decoded_xyz.flatten()[:3].to(dtype=torch.float32)
 
-                # Get the coordinates of all the other nodes in the graph.
-                current_graph_coordinates = torch.tensor(np.array(list(nx.get_node_attributes(generated_graph,
-                                                                                              "node_label").values())),
-                                                         device=device)
+            # Calculate the coordinates of the new node (xyz only)
+            next_node_coord = (current_node_coord + decoded_xyz)
 
-                # Remove the coordinates of the current node from the list of coordinates.
-                start_node_idx = torch.tensor(
-                    [i for i in range(current_graph_coordinates.shape[0]) if i != current_node_index], device=device)
-                current_graph_coordinates = torch.index_select(current_graph_coordinates, 0, start_node_idx)
+            all_node_labels = list(nx.get_node_attributes(generated_graph, "node_label").values())
+            spatial_labels = [label[:3] for label in all_node_labels]
+            current_graph_coordinates = torch.tensor(np.array(spatial_labels), device=device)
 
-                # Calculate the distance between the new node to every other node in the graph (except the current
-                # active one)
-                dist = torch.nn.functional.pairwise_distance(next_node_coord.unsqueeze(0), current_graph_coordinates)
 
-                if torch.min(dist) <= max_loop_distance:
-                    established_loops += 1
-                    # If the new node is close to an existing node, add an edge between the current node and the
-                    # existing node. A new node is not added.
-                    loop_node_index = torch.argmin(dist).item()
-                    loop_node_id = list(nodes_list)[loop_node_index]
+            # Remove the coordinates of the current node from the list of coordinates.
+            start_node_idx = torch.tensor(
+                [i for i in range(current_graph_coordinates.shape[0]) if i != current_node_index], device=device)
+            current_graph_coordinates = torch.index_select(current_graph_coordinates, 0, start_node_idx)
+
+            # Calculate the distance between the new node to every other node in the graph (except the current
+            # active one)
+            dist = torch.nn.functional.pairwise_distance(next_node_coord.unsqueeze(0), current_graph_coordinates)
+
+            if torch.min(dist) <= max_loop_distance:
+                established_loops += 1
+                # If the new node is close to an existing node, add an edge between the current node and the
+                # existing node. A new node is not added.
+                loop_node_index = torch.argmin(dist).item()
+                loop_node_id = list(nodes_list)[loop_node_index]
                     
-                    # Add edge with radius attribute if predicted
-                    if predicted_radius is not None:
-                        generated_graph.add_edge(current_node_id, loop_node_id,
+                generated_graph.add_edge(current_node_id, loop_node_id,
                                                  avgRadiusAvg=predicted_radius,
                                                  avgRadiusLabel=predicted_label)
-                    else:
-                        generated_graph.add_edge(current_node_id, loop_node_id)
 
-                    new_edges_this_iteration.append((current_node_id, loop_node_id))
-                    steps += [(current_node_id, loop_node_id, None)]
-                else:
-                    new_nodes += 1
-                    # Otherwise, add a new node and an edge between the current node and the new node.
-                    new_node_id = current_node_idx
-                    current_node_idx += 1
+                #new_edges_this_iteration.append((current_node_id, loop_node_id))
+                steps += [(current_node_id, loop_node_id, None)]
 
-                    generated_graph.add_node(new_node_id, node_label=next_node_coord.tolist())
-                    
-                    # Add edge with radius attribute if predicted
-                    if predicted_radius is not None:
-                        generated_graph.add_edge(current_node_id, new_node_id,
-                                                 avgRadiusAvg=predicted_radius,
-                                                 avgRadiusLabel=predicted_label)
-                    else:
-                        generated_graph.add_edge(current_node_id, new_node_id)
-                    
-                    new_edges_this_iteration.append((current_node_id, new_node_id))
-                    unvisited_nodes.append(new_node_id)
-
-                    steps += [(current_node_id, new_node_id, next_node_coord.tolist())]
             else:
-                break
+                new_nodes += 1
+                # Otherwise, add a new node and an edge between the current node and the new node.
+                new_node_id = current_node_idx
+                current_node_idx += 1
 
+                new_label = next_node_coord.tolist()
+                new_label.append(predicted_radius)
+
+                generated_graph.add_node(new_node_id, node_label=new_label)
+                generated_graph.add_edge(current_node_id, new_node_id,
+                                         avgRadiusAvg=predicted_radius,
+                                         avgRadiusLabel=predicted_label)
+                unvisited_nodes.append(new_node_id)
+                steps += [(current_node_id, new_node_id, next_node_coord.tolist())]
+
+        if len(unvisited_nodes) == 0:
+            #No more unvisited nodes. Stop the generation process.
+            break
+
+
+        '''
         # Collect new edges for batch flow recomputation
         if new_edges_this_iteration:
             pending_edges.extend(new_edges_this_iteration)
@@ -296,7 +289,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
             pending_edges = []
 
         if len(unvisited_nodes) == 0:
-            # No more unvisited nodes. Stop the generation process.
+            #No more unvisited nodes. Stop the generation process.
             break
 
     #final flow recomputation
@@ -311,7 +304,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     #identify the main vessel and annotate flows on the grown graph
     #find_main_vessel(generated_graph)
     generated_graph = annotate_graph_with_flows(generated_graph)
-
+    '''
     return generated_graph, steps
 
 
@@ -324,8 +317,9 @@ def edge_length_mean_and_std(graph: nx.Graph) -> (float, float):
     """
     all_distances = []
     for edge in graph.edges:
-        all_distances.append(
-            np.linalg.norm(np.array(graph.nodes[edge[0]]['node_label']) - np.array(graph.nodes[edge[1]]['node_label'])))
+        pos_0 = np.array(graph.nodes[edge[0]]['node_label']).flatten()[:3]
+        pos_1 = np.array(graph.nodes[edge[1]]['node_label']).flatten()[:3]
+        all_distances.append(np.linalg.norm(pos_0 - pos_1))
 
     # Convert to numpy array
     all_distances = np.array(all_distances)
@@ -383,15 +377,15 @@ def edge_radius_mean_and_std(graph: nx.Graph, default_radius: float = 3.0) -> (f
     """
     all_radii = []
     for edge in graph.edges:
-        radius = graph.edges[edge].get('avgRadiusAvg', default_radius)
+        radius = graph.edges[edge].get('avgRadiusAvg')
         if radius is not None:
             all_radii.append(float(radius))
         else:
             all_radii.append(default_radius)
     
     all_radii = np.array(all_radii)
-    mean_radius = np.mean(all_radii) if len(all_radii) > 0 else default_radius
-    std_radius = np.std(all_radii) if len(all_radii) > 0 else 0.0
+    mean_radius = np.mean(all_radii)
+    std_radius = np.std(all_radii) 
     
     return mean_radius, std_radius
 

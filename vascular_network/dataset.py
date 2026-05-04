@@ -20,6 +20,10 @@ https://github.com/jocpae/VesselGraph
 
 AVAILABLE_DATASETS = {
 
+    'synthetic_graph_1_pressoes_fluxos': {'folder': 'files/data/synthetic_graph_1_pressoes_fluxos',
+                                          'url': '',
+                                          'AlanBrainAtlas': False,'extraction_method': 'voreen'},
+
     'synthetic_graph_1': {'folder': 'synthetic.zip',
                           'url': 'https://syncandshare.lrz.de/dl/fiXfSD14pKGM54L5BqZxF8vF/synthetic_graph_1.zip',
                           'AlanBrainAtlas': False, 'extraction_method': 'voreen'},
@@ -223,8 +227,13 @@ class VesselGraphDataset(InMemoryDataset):
             data.x = data.x[node_mask]
             data.pos = data.pos[node_mask]
 
-            # problem does not order them as I would like
-            # data.edge_index, data.edge_attr = to_undirected(edge_index=data.edge_index,edge_attr = data.edge_attr,num_nodes=data.num_nodes,reduce="add") # add attribute
+            # DEBUG: Print node positions and edge list after masking
+            print(f"[DEBUG] Dataset: {self.name}, id: {id}")
+            print(f"[DEBUG] data.pos shape: {data.pos.shape}")
+            print(f"[DEBUG] data.pos (first 10):\n{data.pos[:10]}")
+            print(f"[DEBUG] Edges (first 10):\n{data.edge_index[:, :10]}")
+            print(f"[DEBUG] Number of nodes: {data.pos.shape[0]}")
+            print(f"[DEBUG] Number of edges: {data.edge_index.shape[1]}")
 
             edge_array = np.ones((2, int(2 * data.edge_attr.shape[0])))
             edge_attr_array = np.ones((2 * data.edge_attr.shape[0], data.edge_attr.shape[1]))
@@ -419,7 +428,7 @@ class LinkVesselGraph(InMemoryDataset):
                     df_atlas.columns.values)
 
             else:
-                data.node_attr_keys = ['pos_x', 'pos_y', 'pos_z', 'degree', 'isAtSampleBorder']
+                data.node_attr_keys = ['pos_x', 'pos_y', 'pos_z', 'degree']
 
             # Node feature matrix with shape [num_nodes, num_node_features]
             data.x = torch.from_numpy(np.array(df_nodes[data.node_attr_keys].to_numpy()))
@@ -448,8 +457,13 @@ class LinkVesselGraph(InMemoryDataset):
             data.x = data.x[node_mask]
             data.pos = data.pos[node_mask]
 
-            # problem does not order them as I would like
-            # data.edge_index, data.edge_attr = to_undirected(edge_index=data.edge_index,edge_attr = data.edge_attr,num_nodes=data.num_nodes,reduce="add") # add attribute
+            # DEBUG: Print node positions and edge list after masking
+            print(f"[DEBUG] Dataset: {self.name}, id: {id}")
+            print(f"[DEBUG] data.pos shape: {data.pos.shape}")
+            print(f"[DEBUG] data.pos (first 10):\n{data.pos[:10]}")
+            print(f"[DEBUG] Edges (first 10):\n{data.edge_index[:, :10]}")
+            print(f"[DEBUG] Number of nodes: {data.pos.shape[0]}")
+            print(f"[DEBUG] Number of edges: {data.edge_index.shape[1]}")
 
             edge_array = np.ones((2, int(2 * data.edge_attr.shape[0])))
             edge_attr_array = np.ones((2 * data.edge_attr.shape[0], data.edge_attr.shape[1]))
@@ -464,7 +478,7 @@ class LinkVesselGraph(InMemoryDataset):
 
             # includes all edges (train+test+val) in both drections
             data.edge_index_undirected = torch.tensor(edge_array, dtype=torch.long)
-            data.edge_attr_undirected = torch.tensor(edge_attr_array, dtype=torch.long)
+            data.edge_attr_undirected = torch.tensor(edge_attr_array, dtype=torch.float)
             del edge_array
             del edge_attr_array
 

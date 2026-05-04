@@ -16,6 +16,7 @@ from sgg.model import GraphSeq2Seq
 from sgg.trainer import GraphSeq2SeqTrainer
 from utils.util import set_seed
 from vascular_network.dataset_generation import generate_training_graph
+from utils.torch import compute_class_weights
 
 
 @hydra.main(config_path="configs", config_name="default_config", version_base="1.2")
@@ -48,37 +49,73 @@ def evaluate_model(cfg: DictConfig):
 
     # Init a new GraphSeq2Seq model
     model = GraphSeq2Seq(n_classes=cfg.num_classes + 1, max_output_nodes=cfg.paths.max_output_nodes,
-                         n_dimensions=feature_dim, n_extra_classes=radius_class_encoder.n_classes + 1,
-                         device=device, **cfg.model)
+                         n_dimensions=feature_dim, n_extra_classes=radius_class_encoder.n_classes + 1,hidden_size=512, 
+                         num_layers=4,embedding_size=256, is_bidirectional=True,
+                         device=cfg.trainer.device)
 
     # Init a trainer for the GraphSeq2Seq model. We don't specify a train dataset nor class weights because we are
     # using the trainer only for evaluation purposes.
     # Init a trainer for the GraphSeq2Seq model
-    trainer = GraphSeq2SeqTrainer(model=model, train_dataset=None, graph=training_graph,
-                                  distance_function=get_signed_distance_between_nodes,
-                                  categorical_coordinates_encoder=cat_coordinates_encoder,
-                                  radius_class_encoder=radius_class_encoder,
-                                  class_weights=None, ignore_index=cfg.num_classes, **cfg.evaluator,
-                                  **cfg.paths,
-                                  **cfg.trainer)
 
-    trainer.load_checkpoint(os.path.join(OUTPUT_PATH, 'models', '4_paths_5_length.pt'))
+    #Compute class weights separately for xyz and radius channels.
+    spatial_dims = 3
+    xyz_class_weights = compute_class_weights(data_y[..., :spatial_dims], cfg.num_classes + 1)
+    n_radius_classes = radius_class_encoder.n_classes + 1  # +1 for ignore/padding index
+    if feature_dim > 3:
+        radius_class_weights = torch.zeros(cfg.num_classes + 1)
+        real_weights = compute_class_weights(data_y[..., 3], n_radius_classes)
+        radius_class_weights[:n_radius_classes] = real_weights
+    else:
+        radius_class_weights = None
+
+    trainer = GraphSeq2SeqTrainer(
+        model=model,
+        train_dataset=None,
+        graph=training_graph,
+        max_input_paths=cfg.paths.max_input_paths,
+        max_paths_for_each_reachable_node=cfg.paths.max_paths_for_each_reachable_node,
+        max_input_path_length=cfg.paths.max_input_path_length,
+        max_output_nodes=cfg.paths.max_output_nodes,
+        distance_function=get_signed_distance_between_nodes,
+        max_loop_distance=cfg.evaluator.max_loop_distance,
+        synthetic_graph_gen_iterations=cfg.evaluator.synthetic_graph_gen_iterations,
+        seed_graph_depth=cfg.evaluator.seed_graph_depth,
+        categorical_coordinates_encoder=cat_coordinates_encoder,
+        radius_class_encoder=radius_class_encoder,
+        ignore_index=cfg.num_classes,
+        lr=cfg.trainer.lr,
+        max_iters=cfg.trainer.max_iters,
+        batch_size=cfg.trainer.batch_size,
+        device=cfg.trainer.device,
+        xyz_class_weights = xyz_class_weights,
+        radius_class_weights = radius_class_weights,
+        radius_ignore_index = radius_class_encoder.n_classes,
+        early_stop_patience=cfg.trainer.early_stop_patience
+    )
+
+    trainer.load_checkpoint(os.path.join('outputs', '2026-04-27', '18-59-13', 'checkpoints', 'checkpoint_best.pt'))
 
     # print(steps)
 
     metrics, steps = trainer.evaluate()
 
+    synthetic_graph = metrics['synthetic_graph']
+    synthetic_edges_radius = metrics['synthetic_edges_radius']
+    
     degree_fig = metrics['plots']['generated_graph_degree_analysis']
 
     plt.show()
 
     #interactive_evaluation(steps, cfg.evaluator.seed_graph_depth)
-    interactive_evaluation([], cfg.evaluator.seed_graph_depth)
+    #interactive_evaluation([], cfg.evaluator.seed_graph_depth)
+    interactive_evaluation(steps, cfg.evaluator.seed_graph_depth, graph=synthetic_graph, edges_radius=synthetic_edges_radius)
 
-
-def interactive_evaluation(steps, max_depth):
+def interactive_evaluation(steps, max_depth, graph=None, edges_radius=None):
     # Create a Networkx graph
-    raw, _ = generate_training_graph(OUTPUT_PATH)
+    if graph is None:
+        raw, _ = generate_training_graph(OUTPUT_PATH)
+    else:
+        raw = graph
 
     # Get a seed from the graph and considering a maximum starting_seed_depth
     # G = random_subgraph(raw, max_depth=12)
@@ -151,6 +188,8 @@ def interactive_evaluation(steps, max_depth):
 
     # Define the function to add a new node and edge to the graph
     def add_node_and_edge(action):
+        if action is None:
+            return
         if action[2]:
             new_pos = action[2]
             # Add the new node to the graph
@@ -165,6 +204,9 @@ def interactive_evaluation(steps, max_depth):
         # Connect the new node to an existing node
         G.add_edge(action[0], action[1])
 
+        radius = edges_radius[len(G.edges)-1]
+
+        tube_filter.SetRadius(radius)
         # Update the vtkPolyData object with the new node and edge
         line = vtk.vtkLine()
         line.GetPointIds().SetId(0, existing_node)

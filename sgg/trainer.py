@@ -24,15 +24,11 @@ class GraphSeq2SeqTrainer:
                  distance_function: Callable, max_loop_distance: int, synthetic_graph_gen_iterations: int,
                  seed_graph_depth: int, categorical_coordinates_encoder: CategoricalCoordinatesEncoder,
                  radius_class_encoder: Optional[RadiusClassEncoder],
-                 class_weights: Optional[torch.Tensor], ignore_index: Optional[int],
+                 ignore_index: Optional[int],
                  lr: float, max_iters: int, batch_size: int, device: str,
                  xyz_class_weights: Optional[torch.Tensor] = None,
                  radius_class_weights: Optional[torch.Tensor] = None,
-                 radius_loss_weight: Optional[float] = None,
                  radius_ignore_index: Optional[int] = None,
-                 scheduler_patience: int = 100,
-                 scheduler_factor: float = 0.5,
-                 min_lr: float = 1e-6,
                  early_stop_patience: Optional[int] = None):
         """
         This class offers a training loop for a Graph Sequence-to-Sequence model. It is responsible for training
@@ -51,7 +47,6 @@ class GraphSeq2SeqTrainer:
         :param synthetic_graph_gen_iterations: How many iterations to perform when generating synthetic graphs
         :param categorical_coordinates_encoder: A CategoricalCoordinatesEncoder instance. It must be already trained
                                                 with the dataset.
-        :param class_weights: A tensor containing the weight for each class. It is applied to cross-entropy loss.
         :param lr: The learning rate
         :param max_iters: The maximum training iterations
         :param batch_size: The batch size
@@ -74,33 +69,29 @@ class GraphSeq2SeqTrainer:
         self.radius_class_encoder = radius_class_encoder
         self.encoder_optimizer = optim.Adam(self.model.encoder.parameters(), lr=lr)
         self.decoder_optimizer = optim.Adam(self.model.decoder.parameters(), lr=lr)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.encoder_optimizer, mode='min', factor=scheduler_factor,
-            patience=scheduler_patience, min_lr=min_lr)
-        self.min_lr = min_lr
         self.early_stop_patience = early_stop_patience
         self._best_loss = float('inf')
         self._patience_counter = 0
         self._should_stop = False
         # Use separate CrossEntropy losses for spatial (xyz) and radius channels.
         # This allows assigning a dedicated weight to vessel thickness learning.
-        xyz_weights = xyz_class_weights.to(device=device) 
-        radius_weights = radius_class_weights.to(device=device) 
+        xyz_weights = xyz_class_weights.to(device=device) if xyz_class_weights is not None else None
+        radius_weights = radius_class_weights.to(device=device) if radius_class_weights is not None else None
 
         print("xyz_class_weights", xyz_weights)
         print("radius_class_weights", radius_weights)
         self.xyz_loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=xyz_weights)
         self.radius_loss = nn.CrossEntropyLoss(ignore_index=radius_ignore_index, weight=radius_weights)
-        self.radius_loss_weight = radius_loss_weight if radius_loss_weight is not None else 1.0
+        self.radius_loss_weight = 0.1
         print(f"radius_loss_weight: {self.radius_loss_weight}")
         self.max_iters = max_iters
         self.device = device
-
         self.callbacks: Dict = {}
-
         # Attributes to be used for logging and evaluation
         self.iter_num = 0
         self.last_loss_value = 0
+        self.xyz_loss_value = 0
+        self.radius_loss_value = 0
 
     def train(self):
         """
@@ -129,11 +120,11 @@ class GraphSeq2SeqTrainer:
             batch = [t.to(self.device) for t in batch]
             x, y = batch
 
-            #select a random path per sample for teacher forcing and target consistency.
+            #select the last path for teacher forcing. Padding is prepended at the start, so the
+            # last path index is always a real (non-padded) path. All real paths within the same
+            # training sample predict the same output nodes, so there is no benefit from randomness.
             # y shape: (batch_size, n_paths, max_output_nodes, n_dimensions)
-            batch_indices = torch.arange(y.size(0), device=self.device)
-            random_path_indices = torch.randint(0, y.size(1), (y.size(0),), device=self.device)
-            y_selected_paths = y[batch_indices, random_path_indices]
+            y_selected_paths = y[:, -1, :]
 
             # Forward pass through the encoder. This is done in batches.
             decoder_output = self.model(x, y_selected_paths)
@@ -145,13 +136,15 @@ class GraphSeq2SeqTrainer:
             decoder_output = decoder_output.view(-1, n_dimensions, n_classes)
             y_target = y_selected_paths.reshape(-1, n_dimensions)
 
-            spatial_dims = min(3, n_dimensions)
+            spatial_dims = 3
             xyz_output = decoder_output[:, :spatial_dims, :].reshape(-1, n_classes)
             xyz_target = y_target[:, :spatial_dims].reshape(-1)
             xyz_loss = self.xyz_loss(xyz_output, xyz_target)
 
+            radius_loss = None
             if n_dimensions > 3:
-                radius_output = decoder_output[:, 3, :]
+                n_extra_classes = self.model.n_extra_classes
+                radius_output = decoder_output[:, 3, :n_extra_classes]
                 radius_target = y_target[:, 3]
                 radius_loss = self.radius_loss(radius_output, radius_target)
                 self.last_loss_value = xyz_loss + (self.radius_loss_weight * radius_loss)
@@ -168,12 +161,8 @@ class GraphSeq2SeqTrainer:
 
             # Convert to scalar to free computation graph
             self.last_loss_value = self.last_loss_value.item()
-
-            
-            self.scheduler.step(self.last_loss_value)
-            current_lr = self.encoder_optimizer.param_groups[0]['lr']
-            for pg in self.decoder_optimizer.param_groups:
-                pg['lr'] = current_lr
+            self.xyz_loss_value = xyz_loss.item()
+            self.radius_loss_value = radius_loss.item()
 
             # Early stopping check
             if self.early_stop_patience is not None:
@@ -228,14 +217,14 @@ class GraphSeq2SeqTrainer:
 
         synth_graph = nx.convert_node_labels_to_integers(synth_graph, label_attribute='old_label')
         synth_edges_radius = [
-            float(synth_graph.edges[edge].get('avgRadiusAvg', 3.0) or 3.0)
+            float(synth_graph.edges[edge].get('avgRadiusAvg'))
             for edge in synth_graph.edges()
         ]
         fig1 = draw_3d_graph(synth_graph, edges_radius=synth_edges_radius)
 
         seed_graph = nx.convert_node_labels_to_integers(seed_graph, label_attribute='old_label')
         seed_edges_radius = [
-            float(seed_graph.edges[edge].get('avgRadiusAvg', 3.0) or 3.0)
+            float(seed_graph.edges[edge].get('avgRadiusAvg'))
             for edge in seed_graph.edges()
         ]
         fig2 = draw_3d_graph(seed_graph, edges_radius=seed_edges_radius)
@@ -244,7 +233,7 @@ class GraphSeq2SeqTrainer:
         metrics = compute_graph_comparison_metrics(synth_graph, self.graph)
         metrics['plots']['synthetic_graph'] = fig1
         metrics['plots']['seed_graph'] = fig2
-
+        
         return metrics, steps
 
     def add_callback(self, on_event: str, callback: Callable, *args, **kwargs):

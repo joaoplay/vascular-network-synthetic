@@ -11,8 +11,10 @@ def calculate_embedding_representation(nx_graph: nx.Graph):
     g2v = ProNE(n_components=32)
     g2v.fit(nx_graph)
     # Initializer a numpy array to store the embedding representation of each node
-    generated_graph_embedding = np.empty((len(nx_graph.nodes), 32))
+    generated_graph_embedding = np.zeros((len(nx_graph.nodes), 32))
     for node in nx_graph.nodes:
+        if len(g2v.predict(node)) != 32:
+            continue
         generated_graph_embedding[node] = g2v.predict(node)
 
     # Return the sum of the embedding representation of each node

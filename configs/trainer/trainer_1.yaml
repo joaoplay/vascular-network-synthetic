@@ -2,3 +2,4 @@ lr: 0.001
 max_iters: null
 batch_size: 64
 device: cuda
+early_stop_patience: 500

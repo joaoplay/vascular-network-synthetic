@@ -137,9 +137,7 @@ class GraphDataGenerator:
         encoded_prediction_xyz = categorical_coordinates_encoder.transform(prediction_xyz)
 
         if feature_dim > 3:
-            #encode radius separately, because it has a different distribution than the xyz coordinates 
-            #and we want to give it a different encoding, its also able to handle more features in the future
-            #if we want to add more :)
+            #generate radius classes and encode radius values
             radius_class_encoder = RadiusClassEncoder()
 
             input_radius = input_data[..., 3]

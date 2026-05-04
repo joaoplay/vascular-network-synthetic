@@ -53,17 +53,38 @@ def save_checkpoint_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int, c
         trainer.save_checkpoint(os.path.join(checkpoint_save_path, f'checkpoint_{trainer.iter_num}.pt'))
 
 
-def log_loss_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
+def log_overall_loss_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
     """
-    This callback logs the loss and learning rate to wandb
+    This callback logs the loss to wandb
     :param trainer: A GraphSeq2SeqTrainer model
     :param every_n_iters: How often to log the loss to wandb
     :return:
     """
     if trainer.iter_num % every_n_iters == 0:
-        current_lr = trainer.encoder_optimizer.param_groups[0]['lr']
-        print(f"Loss: {trainer.last_loss_value} | LR: {current_lr:.2e}")
-        wandb.log({'Loss': trainer.last_loss_value, 'learning_rate': current_lr})
+        print(f"Loss: {trainer.last_loss_value}")
+        wandb.log({'Loss': trainer.last_loss_value})
+
+def log_xyz_loss_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
+    """
+    This callback logs the loss to wandb
+    :param trainer: A GraphSeq2SeqTrainer model
+    :param every_n_iters: How often to log the loss to wandb
+    :return:
+    """
+    if trainer.iter_num % every_n_iters == 0:
+        print(f"XYZ Loss: {trainer.xyz_loss_value}")
+        wandb.log({'XYZ Loss': trainer.xyz_loss_value})
+
+def log_radius_loss_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
+    """
+    This callback logs the loss to wandb
+    :param trainer: A GraphSeq2SeqTrainer model
+    :param every_n_iters: How often to log the loss to wandb
+    :return:
+    """
+    if trainer.iter_num % every_n_iters == 0:
+        print(f"Radius Loss: {trainer.radius_loss_value}")
+        wandb.log({'Radius Loss': trainer.radius_loss_value})
 
 
 def save_best_checkpoint_callback(trainer: GraphSeq2SeqTrainer, checkpoint_save_path: str):

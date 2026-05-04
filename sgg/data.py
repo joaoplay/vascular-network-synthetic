@@ -250,19 +250,15 @@ def get_signed_distance_between_nodes(graph: nx.Graph, from_node_id, to_node_id)
     current_node = graph.nodes[from_node_id]
     next_node = graph.nodes[to_node_id]
 
-    current_node_pos = np.array(current_node['node_label'])
-    next_node_pos = np.array(next_node['node_label'])
+    current_node_pos = np.array(current_node['node_label']).flatten()[:3]
+    next_node_pos = np.array(next_node['node_label']).flatten()[:3]
 
     position_delta = next_node_pos - current_node_pos
     
-    # Check if edge exists and has radius attribute
-    if graph.has_edge(from_node_id, to_node_id):
-        edge_data = graph.edges[from_node_id, to_node_id]
-        if 'avgRadiusAvg' in edge_data:
-            radius = edge_data['avgRadiusAvg']
-            return np.append(position_delta, radius)
+    edge_data = graph.edges[from_node_id, to_node_id]
+    radius = edge_data['avgRadiusAvg']
+    return np.append(position_delta, radius)
     
-    return position_delta
 
 
 def split_list_into_chunks(l: list, max_size: int):
@@ -437,13 +433,13 @@ def encode_training_sequence(training_sequence: list, max_input_paths_per_node: 
                 raise Exception(
                     "The output path before padding is too long! The number of output nodes must be shortened.")
 
-            # Pad prediction with empty tuples at the end to bring up the length to max_num_output_nodes.
-            if len(path[1]) < max_output_nodes:
-                # Insert empty tuple at the end of first prediction.
-                path[1].append(no_move)
-
-                for _ in range(max_output_nodes - len(path[1])):
-                    path[1].append(padding)
+            # Pad prediction with ignore-index padding for ALL empty positions.
+            # Using no_move (zero_class) as the first pad corrupts the stop signal —
+            # zero_class becomes the most-common target and the model converges to
+            # always predicting it.  Using padding (None → ignore_index) for every
+            # unfilled slot means zero_class never appears as a stop token.
+            for _ in range(max_output_nodes - len(path[1])):
+                path[1].append(padding)
 
             if len(path[1]) > max_output_nodes:
                 raise Exception(
