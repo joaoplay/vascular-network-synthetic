@@ -5,20 +5,20 @@ from sgg.radius_classes import R_EDGES
 
 class RadiusClassEncoder:
     """
-    Encodes continuous radius values into discrete classes using R_EDGES = [1, 2, 3, 4, 5, 6].
-    - Class 0: r < 1
-    - Class 1: 1 <= r < 2
-    - Class 2: 2 <= r < 3
-    - Class 3: 3 <= r < 4
-    - Class 4: 4 <= r < 5
-    - Class 5: 5 <= r < 6
-    - Class 6: r >= 6
+    Encodes continuous radius values into discrete classes using R_EDGES = [2, 3, 4, 5, 6].
+    - Class 0: r < 2
+    - Class 1: 2 <= r < 3
+    - Class 2: 3 <= r < 4
+    - Class 3: 4 <= r < 5
+    - Class 4: 5 <= r < 6
+    - Class 5: r >= 6
     """
     
-    def __init__(self, top_class_max: float = 8.8):
+    def __init__(self, top_class_max: float = 8.8, bottom_class_min: float = 1.34):
         self.r_edges = np.array(R_EDGES, dtype=np.float32)
         self.n_classes = len(self.r_edges) + 1
         self.top_class_max = float(top_class_max)
+        self.bottom_class_min = float(bottom_class_min)
 
     def transform(self, radius_data: torch.Tensor):
         """
@@ -43,7 +43,7 @@ class RadiusClassEncoder:
         return class_indices
     
     def inverse_transform(self, class_indices):
-        labels = ['tiny', 'small', 'medium', 'normal', 'large', 'big', 'huge']
+        labels = ['tiny', 'small', 'medium', 'normal', 'large', 'big']
 
         if isinstance(class_indices, torch.Tensor):
             class_indices = class_indices.detach().cpu().numpy()
@@ -70,8 +70,8 @@ class RadiusClassEncoder:
         edges = self.r_edges
         top = self.top_class_max
 
-        # Build bin bounds: [0, edges[0]), [edges[0], edges[1]), ..., [edges[-1], top]
-        lo = np.concatenate([[0.0], edges])
+        # Build bin bounds: [bottom_class_min, edges[0]), [edges[0], edges[1]), ..., [edges[-1], top]
+        lo = np.concatenate([[self.bottom_class_min], edges])
         hi = np.concatenate([edges, [top]])
 
         flat_idx = np.ravel(idx)

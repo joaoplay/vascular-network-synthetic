@@ -227,14 +227,6 @@ class VesselGraphDataset(InMemoryDataset):
             data.x = data.x[node_mask]
             data.pos = data.pos[node_mask]
 
-            # DEBUG: Print node positions and edge list after masking
-            print(f"[DEBUG] Dataset: {self.name}, id: {id}")
-            print(f"[DEBUG] data.pos shape: {data.pos.shape}")
-            print(f"[DEBUG] data.pos (first 10):\n{data.pos[:10]}")
-            print(f"[DEBUG] Edges (first 10):\n{data.edge_index[:, :10]}")
-            print(f"[DEBUG] Number of nodes: {data.pos.shape[0]}")
-            print(f"[DEBUG] Number of edges: {data.edge_index.shape[1]}")
-
             edge_array = np.ones((2, int(2 * data.edge_attr.shape[0])))
             edge_attr_array = np.ones((2 * data.edge_attr.shape[0], data.edge_attr.shape[1]))
 

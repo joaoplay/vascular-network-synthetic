@@ -29,6 +29,10 @@ class GraphSeq2SeqTrainer:
                  xyz_class_weights: Optional[torch.Tensor] = None,
                  radius_class_weights: Optional[torch.Tensor] = None,
                  radius_ignore_index: Optional[int] = None,
+                 radius_loss_weight: float = 1.0,
+                 radius_class_weight_power: float = 0.5,
+                 radius_class_weight_max_ratio: float = 5.0,
+                 radius_class_weight_min_weight: float | None = None,
                  early_stop_patience: Optional[int] = None):
         """
         This class offers a training loop for a Graph Sequence-to-Sequence model. It is responsible for training
@@ -82,7 +86,7 @@ class GraphSeq2SeqTrainer:
         print("radius_class_weights", radius_weights)
         self.xyz_loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=xyz_weights)
         self.radius_loss = nn.CrossEntropyLoss(ignore_index=radius_ignore_index, weight=radius_weights)
-        self.radius_loss_weight = 0.1
+        self.radius_loss_weight = radius_loss_weight
         print(f"radius_loss_weight: {self.radius_loss_weight}")
         self.max_iters = max_iters
         self.device = device
@@ -162,7 +166,7 @@ class GraphSeq2SeqTrainer:
             # Convert to scalar to free computation graph
             self.last_loss_value = self.last_loss_value.item()
             self.xyz_loss_value = xyz_loss.item()
-            self.radius_loss_value = radius_loss.item()
+            self.radius_loss_value = radius_loss.item() if radius_loss is not None else 0.0
 
             # Early stopping check
             if self.early_stop_patience is not None:

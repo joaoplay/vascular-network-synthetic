@@ -237,8 +237,7 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
     coordinates_by_node = {node_id: coord for node_id, coord in zip(nx_graph.nodes(), nodes_pos)}
 
     group_defs = [
-        {"name": "Raio <= 1", "color": "#1f77b4", "min_r": -1, "max_r": 1},
-        {"name": "Raio 1 - 2", "color": "#ff7f0e", "min_r": 1, "max_r": 2},
+        {"name": "Raio 1 - 2", "color": "#ff7f0e", "min_r": 0, "max_r": 2},
         {"name": "Raio 2 - 3", "color": "#2ca02c", "min_r": 2, "max_r": 3},
         {"name": "Raio 3 - 4", "color": "#d62728", "min_r": 3, "max_r": 4},
             {"name": "Raio 4 - 5", "color": "#9467bd", "min_r": 4, "max_r": 5},

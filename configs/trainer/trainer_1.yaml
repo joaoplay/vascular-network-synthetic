@@ -2,4 +2,8 @@ lr: 0.001
 max_iters: null
 batch_size: 64
 device: cuda
-early_stop_patience: 500
+early_stop_patience: 5000
+radius_loss_weight: 6
+radius_class_weight_power: 1
+radius_class_weight_max_ratio: null
+radius_class_weight_min_weight: null

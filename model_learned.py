@@ -35,15 +35,15 @@ DATA_CFG = dict(
     max_input_paths=4,
     max_paths_for_each_reachable_node=2,
     max_input_path_length=5,
-    num_classes=201,
-    num_iterations=200,
+    num_classes=101,
+    num_iterations=50,
     remove_duplicates=True,
 )
 
 GEN_CFG = dict(
-    seed_graph_depth=6,      
+    seed_graph_depth=8,      
     num_iterations=3000,     
-    max_loop_distance=1.0,    
+    max_loop_distance=15,    
 )
 
 
@@ -146,7 +146,9 @@ def save_to_html(graph: nx.Graph, original_edges: set, filename: str = "vascular
         {"name": "radius 2–3", "color": "#ff7f0e", "r_range": (2, 3),    "is_seed": False},
         {"name": "radius 3–4", "color": "#2ca02c", "r_range": (3, 4),    "is_seed": False},
         {"name": "radius 4–5", "color": "#d62728", "r_range": (4, 5),    "is_seed": False},
-        {"name": "radius > 5", "color": "#8c564b", "r_range": (5, 999),  "is_seed": False},
+        {"name": "radius 5–6", "color": "#8c564b", "r_range": (5, 6),  "is_seed": False},
+        {"name": "radius > 6", "color": "#0c0402", "r_range": (6, 999),  "is_seed": False},
+
     ]
 
     fig = go.Figure()
@@ -215,7 +217,7 @@ if __name__ == "__main__":
 
     print(f"Seed graph: {len(seed_graph.nodes())} nodes, {len(seed_graph.edges())} edges")
     print(f"Unvisited frontier nodes: {len(unvisited)}")
-
+    
     generated_graph, _ = generate_synthetic_graph(
         seed_graph=seed_graph,
         graph_seq_2_seq=model,
@@ -237,3 +239,32 @@ if __name__ == "__main__":
     print(f"New nodes added: {new_nodes}")
 
     save_to_html(generated_graph, original_edges, filename="vascular_network_generated.html")
+    
+
+    # --- Radius embedding PCA (3D) ---
+    from sklearn.decomposition import PCA
+    import matplotlib.pyplot as plt
+
+    # Embeddings are shared between encoder and decoder
+    emb = model.spatial_embedding.weight.detach().cpu().numpy()
+    emb_r = model.radius_embedding.weight.detach().cpu().numpy()
+
+    for name, data, fname in [
+        ("Spatial embedding PCA", emb, "spatial_embedding_pca.png"),
+        ("Radius embedding PCA", emb_r, "radius_embedding_pca.png"),
+    ]:
+        pca = PCA(n_components=3)
+        proj = pca.fit_transform(data)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(proj[:, 0], proj[:, 1], proj[:, 2])
+        for i in range(proj.shape[0]):
+            ax.text(proj[i, 0], proj[i, 1], proj[i, 2], str(i))
+        ax.set_title(name)
+        plt.savefig(fname, dpi=150, bbox_inches="tight")
+        print(f"Saved: {fname}")
+        plt.close(fig)
+
+
+

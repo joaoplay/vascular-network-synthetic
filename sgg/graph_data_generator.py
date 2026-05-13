@@ -150,14 +150,9 @@ class GraphDataGenerator:
             encoded_prediction_radius = radius_class_encoder.transform(prediction_radius)
 
 
-            #keep padding/unknown values aligned with ignore_index convention 
-            #if i dont do this, the model gives out of bounds errors ???
-            #---------------------------------------------------------------
-            RADIUS_IGNORE_INDEX = radius_class_encoder.n_classes  
-            encoded_input_radius[input_radius_nan_mask] = RADIUS_IGNORE_INDEX
-            encoded_prediction_radius[prediction_radius_nan_mask] = RADIUS_IGNORE_INDEX
-            #didnt understand this bit, i used copilot to help me here 
-            #---------------------------------------------------------------
+            radius_ignore_index = radius_class_encoder.n_classes
+            encoded_input_radius[input_radius_nan_mask] = radius_ignore_index
+            encoded_prediction_radius[prediction_radius_nan_mask] = radius_ignore_index
 
 
             input_data = torch.empty_like(input_data, dtype=torch.long)

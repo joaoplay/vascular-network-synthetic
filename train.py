@@ -88,10 +88,18 @@ def train_model(cfg: DictConfig):
     spatial_dims = 3
     xyz_class_weights = compute_class_weights(data_y[..., :spatial_dims], cfg.num_classes)
     n_radius_classes = radius_class_encoder.n_classes
-    if feature_dim > 3:
-        radius_class_weights = compute_class_weights(data_y[..., 3], n_radius_classes + 1)[:n_radius_classes]
-    else:
-        radius_class_weights = None
+    radius_class_counts = torch.bincount(data_y[..., spatial_dims].reshape(-1).long(),minlength=n_radius_classes,)
+    print(f'radius_class_counts: {radius_class_counts.tolist()}')
+
+    radius_class_weights = compute_class_weights(
+            data_y[..., spatial_dims],
+            n_radius_classes,
+            power=cfg.trainer.radius_class_weight_power,
+            max_ratio=cfg.trainer.radius_class_weight_max_ratio,
+            min_weight=cfg.trainer.radius_class_weight_min_weight,
+            )
+
+
 
 
     # Compute node degree statistics for the original training graph. This is important to later compare with

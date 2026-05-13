@@ -48,25 +48,32 @@ def evaluate_model(cfg: DictConfig):
     print(f'Using model n_dimensions={feature_dim}')
 
     # Init a new GraphSeq2Seq model
-    model = GraphSeq2Seq(n_classes=cfg.num_classes + 1, max_output_nodes=cfg.paths.max_output_nodes,
-                         n_dimensions=feature_dim, n_extra_classes=radius_class_encoder.n_classes + 1,hidden_size=512, 
-                         num_layers=4,embedding_size=256, is_bidirectional=True,
-                         device=cfg.trainer.device)
+    model = GraphSeq2Seq(n_classes=cfg.num_classes, max_output_nodes=cfg.paths.max_output_nodes,
+                         n_dimensions=feature_dim, n_extra_classes=radius_class_encoder.n_classes,
+                         device=cfg.trainer.device, **cfg.model)
 
     # Init a trainer for the GraphSeq2Seq model. We don't specify a train dataset nor class weights because we are
     # using the trainer only for evaluation purposes.
     # Init a trainer for the GraphSeq2Seq model
-
+    
     #Compute class weights separately for xyz and radius channels.
     spatial_dims = 3
-    xyz_class_weights = compute_class_weights(data_y[..., :spatial_dims], cfg.num_classes + 1)
-    n_radius_classes = radius_class_encoder.n_classes + 1  # +1 for ignore/padding index
-    if feature_dim > 3:
-        radius_class_weights = torch.zeros(cfg.num_classes + 1)
-        real_weights = compute_class_weights(data_y[..., 3], n_radius_classes)
-        radius_class_weights[:n_radius_classes] = real_weights
+    xyz_class_weights = compute_class_weights(data_y[..., :spatial_dims], cfg.num_classes)
+    n_radius_classes = radius_class_encoder.n_classes
+    if feature_dim > spatial_dims:
+        radius_targets = data_y[..., spatial_dims]
+        valid_radius_targets = radius_targets[
+            (radius_targets >= 0) & (radius_targets < n_radius_classes)
+        ]
+        radius_class_weights = compute_class_weights(
+            valid_radius_targets,
+            n_radius_classes,
+            power=cfg.trainer.radius_class_weight_power,
+            max_ratio=cfg.trainer.radius_class_weight_max_ratio,
+        )
     else:
         radius_class_weights = None
+    
 
     trainer = GraphSeq2SeqTrainer(
         model=model,
