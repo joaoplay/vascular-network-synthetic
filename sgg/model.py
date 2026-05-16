@@ -10,8 +10,9 @@ class GraphEncoderRNN(torch.nn.Module):
     embeddings.
     """
 
-    def __init__(self, n_dimensions: int, n_classes: int, hidden_size: int, num_layers: int, embedding_size: int,
-                 is_bidirectional: bool, n_extra_classes: int = 6, spatial_embedding=None, radius_embedding=None) -> None:
+    def __init__(self, n_dimensions: int, hidden_size: int, num_layers: int, embedding_size: int,
+                 is_bidirectional: bool, spatial_embedding=None, radius_embedding=None,
+                 flow_embedding=None) -> None:
         """
         :param n_dimensions: Can be 3D or 2D. Currently, most of the code is written for 3D, although it should be
                              this module is already prepared for 2D.
@@ -25,14 +26,13 @@ class GraphEncoderRNN(torch.nn.Module):
         super().__init__()
         self.n_dimensions = n_dimensions
         self.spatial_dims = 3
-        self.extra_dims = 1
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.is_bidirectional = is_bidirectional
         self.spatial_embedding = spatial_embedding
         self.radius_embedding = radius_embedding
+        self.flow_embedding = flow_embedding
 
-        # Create a GRU as encoder. The input size is an embedding representation for each dimension (3 when in 3D)
         self.encoder = nn.GRU(input_size=embedding_size * n_dimensions, hidden_size=hidden_size,
                               num_layers=self.num_layers, bias=True, batch_first=True,
                               bidirectional=self.is_bidirectional)
@@ -47,8 +47,14 @@ class GraphEncoderRNN(torch.nn.Module):
         """
 
         spatial_embedded = self.spatial_embedding(x[:, :, :self.spatial_dims]).view(x.size(0), x.size(1), -1)
-        radius_embedded = self.radius_embedding(x[:, :, self.spatial_dims]).view(x.size(0), x.size(1), -1)
-        embedded = torch.cat([spatial_embedded, radius_embedded], dim=2)
+        embedded_parts = [spatial_embedded]
+        if self.n_dimensions > self.spatial_dims:
+            radius_embedded = self.radius_embedding(x[:, :, self.spatial_dims]).view(x.size(0), x.size(1), -1)
+            embedded_parts.append(radius_embedded)
+        if self.n_dimensions > self.spatial_dims + 1:
+            flow_embedded = self.flow_embedding(x[:, :, self.spatial_dims + 1]).view(x.size(0), x.size(1), -1)
+            embedded_parts.append(flow_embedded)
+        embedded = torch.cat(embedded_parts, dim=2)
 
         output, hidden_next = self.encoder(embedded, h)
 
@@ -72,7 +78,8 @@ class GraphDecoderRNN(nn.Module):
     """
 
     def __init__(self, n_dimensions: int, n_classes: int, hidden_size: int, num_layers: int, embedding_size: int,
-                 is_bidirectional: bool, n_extra_classes: int = 6, spatial_embedding=None, radius_embedding=None) -> None:
+                 is_bidirectional: bool, n_radius_classes: int = 6, n_flow_classes: int = 6,
+                 spatial_embedding=None, radius_embedding=None, flow_embedding=None) -> None:
         """
         :param n_dimensions: Can be 3D or 2D. Currently, most of the code is written for 3D, although it should be
                              this module is already prepared for 2D.
@@ -88,13 +95,13 @@ class GraphDecoderRNN(nn.Module):
         self.is_bidirectional = is_bidirectional
         self.n_dimensions = n_dimensions
         self.spatial_dims = 3
-        self.extra_dims = 1
-        self.n_extra_classes = n_extra_classes
+        self.n_radius_classes = n_radius_classes
+        self.n_flow_classes = n_flow_classes
         self.spatial_embedding = spatial_embedding
         self.radius_embedding = radius_embedding
+        self.flow_embedding = flow_embedding
         rnn_output_size = hidden_size * (2 if self.is_bidirectional else 1)
 
-        # Init a GRU as decoder
         self.decoder = nn.GRU(input_size=embedding_size * n_dimensions, hidden_size=hidden_size,
                               num_layers=self.num_layers, bias=True, batch_first=True, dropout=0,
                               bidirectional=self.is_bidirectional)
@@ -103,7 +110,8 @@ class GraphDecoderRNN(nn.Module):
         # Separate heads keep the radius classifier small and prevent its logits
         # from being buried in the 201-way xyz coordinate vocabulary.
         self.xyz_out = nn.Linear(rnn_output_size, n_classes * self.spatial_dims)
-        self.radius_out = nn.Linear(rnn_output_size, n_extra_classes) 
+        self.radius_out = nn.Linear(rnn_output_size, n_radius_classes)
+        self.flow_out = nn.Linear(rnn_output_size, n_flow_classes) if n_dimensions > self.spatial_dims + 1 else None
 
     def forward(self, x: torch.Tensor, h: torch.Tensor):
         """
@@ -115,17 +123,31 @@ class GraphDecoderRNN(nn.Module):
         """
         #compute embeddings for xyz and other features
         spatial_embedded = self.spatial_embedding(x[:, :, :self.spatial_dims]).view(x.size(0), x.size(1), -1)
-        radius_embedded = self.radius_embedding(x[:, :, self.spatial_dims]).view(x.size(0), x.size(1), -1)
-        output = torch.cat([spatial_embedded, radius_embedded], dim=2)
+        embedded_parts = [spatial_embedded]
+        if self.n_dimensions > self.spatial_dims:
+            radius_embedded = self.radius_embedding(x[:, :, self.spatial_dims]).view(x.size(0), x.size(1), -1)
+            embedded_parts.append(radius_embedded)
+        if self.n_dimensions > self.spatial_dims + 1:
+            flow_embedded = self.flow_embedding(x[:, :, self.spatial_dims + 1]).view(x.size(0), x.size(1), -1)
+            embedded_parts.append(flow_embedded)
+        output = torch.cat(embedded_parts, dim=2)
         output = self.relu(output)
 
         output, hidden_next = self.decoder(output, h)
 
         xyz_logits = self.xyz_out(output).view(x.size(0), x.size(1), self.spatial_dims, -1)
-        radius_logits = self.radius_out(output).view(x.size(0), x.size(1), 1, self.n_extra_classes)
-        radius_output = output.new_full((x.size(0), x.size(1), 1, xyz_logits.size(-1)),-1e9,)
-        radius_output[:, :, :, :self.n_extra_classes] = radius_logits
-        output = torch.cat([xyz_logits, radius_output], dim=2)
+        output_parts = [xyz_logits]
+        if self.n_dimensions > self.spatial_dims:
+            radius_logits = self.radius_out(output).view(x.size(0), x.size(1), 1, self.n_radius_classes)
+            radius_output = output.new_full((x.size(0), x.size(1), 1, xyz_logits.size(-1)), -1e9)
+            radius_output[:, :, :, :self.n_radius_classes] = radius_logits
+            output_parts.append(radius_output)
+        if self.flow_out is not None:
+            flow_logits = self.flow_out(output).view(x.size(0), x.size(1), 1, self.n_flow_classes)
+            flow_output = output.new_full((x.size(0), x.size(1), 1, xyz_logits.size(-1)), -1e9)
+            flow_output[:, :, :, :self.n_flow_classes] = flow_logits
+            output_parts.append(flow_output)
+        output = torch.cat(output_parts, dim=2)
 
 
         return output, hidden_next
@@ -148,7 +170,8 @@ class GraphSeq2Seq(nn.Module):
     predicts the position of next nodes in relation to the current active node.
     """
 
-    def __init__(self, n_classes, max_output_nodes, n_dimensions=4, n_extra_classes=6, hidden_size=512, num_layers=4,
+    def __init__(self, n_classes, max_output_nodes, n_dimensions=4, n_radius_classes=6, n_flow_classes=6,
+                 n_extra_classes=None, hidden_size=512, num_layers=4,
                  embedding_size=200, is_bidirectional=True, device='cpu') -> None:
         """
         :param n_classes: Number of classes to be used to discretize the spatial relative coordinates
@@ -163,9 +186,13 @@ class GraphSeq2Seq(nn.Module):
         :param device: Device to be used for training (e.g. 'cpu', 'cuda')
         """
         super().__init__()
+        if n_extra_classes is not None:
+            n_radius_classes = n_extra_classes
         self.n_dimensions = n_dimensions
         self.n_classes = n_classes
-        self.n_extra_classes = n_extra_classes
+        self.n_radius_classes = n_radius_classes
+        self.n_extra_classes = n_radius_classes
+        self.n_flow_classes = n_flow_classes
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.embedding_size = embedding_size
@@ -173,14 +200,19 @@ class GraphSeq2Seq(nn.Module):
         self.is_bidirectional = is_bidirectional
         self.device = device
         self.spatial_embedding = nn.Embedding(n_classes + 1, embedding_size)
-        self.radius_embedding = nn.Embedding(n_extra_classes + 1, embedding_size, padding_idx=n_extra_classes)
+        self.radius_embedding = nn.Embedding(n_radius_classes + 1, embedding_size, padding_idx=n_radius_classes)
+        self.flow_embedding = nn.Embedding(n_flow_classes + 1, embedding_size, padding_idx=n_flow_classes)
 
-        
         # Initialize encoder and decoder with shared embeddings
-        self.encoder = GraphEncoderRNN(n_dimensions, n_classes, hidden_size, num_layers, embedding_size,
-                                       is_bidirectional, n_extra_classes=n_extra_classes, spatial_embedding=self.spatial_embedding, radius_embedding=self.radius_embedding).to(device)
+        self.encoder = GraphEncoderRNN(n_dimensions, hidden_size, num_layers, embedding_size,
+                                       is_bidirectional, spatial_embedding=self.spatial_embedding,
+                                       radius_embedding=self.radius_embedding,
+                                       flow_embedding=self.flow_embedding).to(device)
         self.decoder = GraphDecoderRNN(n_dimensions, n_classes, hidden_size, num_layers, embedding_size,
-                                       is_bidirectional, n_extra_classes=n_extra_classes, spatial_embedding=self.spatial_embedding, radius_embedding=self.radius_embedding).to(device)
+                                       is_bidirectional, n_radius_classes, n_flow_classes,
+                                       spatial_embedding=self.spatial_embedding,
+                                       radius_embedding=self.radius_embedding,
+                                       flow_embedding=self.flow_embedding).to(device)
 
         #layernorm to normalize aggregated hidden states per-layer across hidden_size
         #self.hidden_layer_norm = nn.LayerNorm(hidden_size).to(device)
@@ -235,8 +267,12 @@ class GraphSeq2Seq(nn.Module):
 
 
         # Initialize decoder start token.
-        # xyz dims use zero_class; radius start from 6(pad class).
-        decoder_start_classes = [zero_class] * spatial_dims + [self.n_extra_classes]
+        # xyz dims use zero_class; radius/flow use their padding classes.
+        decoder_start_classes = [zero_class] * spatial_dims
+        if self.n_dimensions > spatial_dims:
+            decoder_start_classes.append(self.n_radius_classes)
+        if self.n_dimensions > spatial_dims + 1:
+            decoder_start_classes.append(self.n_flow_classes)
         decoder_start_input = torch.tensor([decoder_start_classes], device=self.device).long().unsqueeze(0).repeat(
             batch_size, 1, 1)
 
@@ -259,14 +295,16 @@ class GraphSeq2Seq(nn.Module):
                 decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
                 step_logits = decoder_output[:, -1, :, :]  # (batch_size, n_dimensions, n_classes)
 
-                # Sample each dimension independently with its correct vocab size.
-                # xyz dims (0..2): n_classes logits; radius dim (3): n_extra_classes logits (rest are -inf)
                 sampled_indices = torch.zeros(batch_size, self.n_dimensions, dtype=torch.long, device=self.device)
                 for dim in range(self.n_dimensions):
                     if dim < spatial_dims:
                         logits_dim = step_logits[:, dim, :self.n_classes]
+                    elif dim == spatial_dims:
+                        logits_dim = step_logits[:, dim, :self.n_radius_classes]
+                    elif dim == spatial_dims + 1:
+                        logits_dim = step_logits[:, dim, :self.n_flow_classes]
                     else:
-                        logits_dim = step_logits[:, dim, :self.n_extra_classes]
+                        continue
                     probs_dim = logits_dim.softmax(dim=-1)
                     sampled_indices[:, dim] = torch.multinomial(probs_dim, 1).squeeze(1)
                 

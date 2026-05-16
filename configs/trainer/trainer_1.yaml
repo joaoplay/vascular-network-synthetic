@@ -7,3 +7,4 @@ radius_loss_weight: 6
 radius_class_weight_power: 1
 radius_class_weight_max_ratio: null
 radius_class_weight_min_weight: null
+flow_loss_weight: 1

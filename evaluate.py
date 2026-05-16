@@ -42,14 +42,15 @@ def evaluate_model(cfg: DictConfig):
                                               num_iterations=cfg.num_preprocessing_iterations,
                                               remove_duplicates=cfg.remove_duplicates, **cfg.paths)
 
-    data_x, data_y, cat_coordinates_encoder, radius_class_encoder = graph_data_generator.load()
+    data_x, data_y, cat_coordinates_encoder, radius_class_encoder, flow_class_encoder = graph_data_generator.load()
 
     feature_dim = int(data_x.shape[-1])
     print(f'Using model n_dimensions={feature_dim}')
 
     # Init a new GraphSeq2Seq model
     model = GraphSeq2Seq(n_classes=cfg.num_classes, max_output_nodes=cfg.paths.max_output_nodes,
-                         n_dimensions=feature_dim, n_extra_classes=radius_class_encoder.n_classes,
+                         n_dimensions=feature_dim, n_radius_classes=radius_class_encoder.n_classes,
+                         n_flow_classes=flow_class_encoder.n_classes,
                          device=cfg.trainer.device, **cfg.model)
 
     # Init a trainer for the GraphSeq2Seq model. We don't specify a train dataset nor class weights because we are
@@ -89,6 +90,7 @@ def evaluate_model(cfg: DictConfig):
         seed_graph_depth=cfg.evaluator.seed_graph_depth,
         categorical_coordinates_encoder=cat_coordinates_encoder,
         radius_class_encoder=radius_class_encoder,
+        flow_class_encoder=flow_class_encoder,
         ignore_index=cfg.num_classes,
         lr=cfg.trainer.lr,
         max_iters=cfg.trainer.max_iters,
@@ -97,6 +99,7 @@ def evaluate_model(cfg: DictConfig):
         xyz_class_weights = xyz_class_weights,
         radius_class_weights = radius_class_weights,
         radius_ignore_index = radius_class_encoder.n_classes,
+        flow_ignore_index = flow_class_encoder.n_classes if feature_dim > spatial_dims + 1 else None,
         early_stop_patience=cfg.trainer.early_stop_patience
     )
 

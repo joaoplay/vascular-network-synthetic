@@ -208,7 +208,7 @@ class VesselGraphDataset(InMemoryDataset):
 
             edges = np.column_stack((np.array(df_edges[['node1id']]), np.array(df_edges[['node2id']])))
             if AVAILABLE_DATASETS[self.name]['extraction_method'] == 'voreen':
-                data.edge_attr_keys = ['length', 'distance', 'avgRadiusAvg', 'roundnessAvg', 'curveness']
+                data.edge_attr_keys = ['length', 'distance', 'avgRadiusAvg', 'roundnessAvg', 'curveness', 'flow']
             else:
                 data.edge_attr_keys = []
                 print("No edge attributes.")
@@ -406,6 +406,8 @@ class LinkVesselGraph(InMemoryDataset):
             id = os.path.basename(os.path.normpath(subfolders[i]))
             print(osp.join(self.raw_dir, self.name, id, f'{id}_nodes_processed.csv'))
             print(osp.join(self.raw_dir, self.name, id, f'{id}_edges_processed.csv'))
+
+            #added index_col because it kept reading pos z column wrong!!!
 
             df_nodes = pd.read_csv(osp.join(self.raw_dir, self.name, id, f'{id}_nodes_processed.csv'), sep=';')
             df_edges = pd.read_csv(osp.join(self.raw_dir, self.name, id, f'{id}_edges_processed.csv'), sep=';')

@@ -68,7 +68,7 @@ def load_encoders(full_graph: nx.Graph, preprocessed_data_dir: str):
     any node in the graph.  We replicate that here so the cache file name
     matches, then confirm by reading the actual data shape.
 
-    Returns (coord_encoder, radius_encoder, max_output_nodes).
+    Returns (coord_encoder, radius_encoder, flow_encoder, max_output_nodes, feature_dim).
     """
     max_output_nodes = max(dict(full_graph.degree()).values())
     generator = GraphDataGenerator(
@@ -78,18 +78,21 @@ def load_encoders(full_graph: nx.Graph, preprocessed_data_dir: str):
         max_output_nodes=max_output_nodes,
         **DATA_CFG,
     )
-    _, data_y, coord_encoder, radius_encoder = generator.load()
+    _, data_y, coord_encoder, radius_encoder, flow_encoder = generator.load()
     max_output_nodes = data_y.shape[2]
+    feature_dim = data_y.shape[-1]
     print(f"Encoders loaded. max_output_nodes from data: {max_output_nodes}")
-    return coord_encoder, radius_encoder, max_output_nodes
+    return coord_encoder, radius_encoder, flow_encoder, max_output_nodes, feature_dim
 
 
-def load_model(checkpoint_path: str, max_output_nodes: int, n_radius_classes: int) -> GraphSeq2Seq:
+def load_model(checkpoint_path: str, max_output_nodes: int, n_radius_classes: int,
+               n_flow_classes: int = 6, n_dimensions: int = 4) -> GraphSeq2Seq:
     model = GraphSeq2Seq(
         n_classes=DATA_CFG["num_classes"],
         max_output_nodes=max_output_nodes,
-        n_dimensions=4,
-        n_extra_classes=n_radius_classes,
+        n_dimensions=n_dimensions,
+        n_radius_classes=n_radius_classes,
+        n_flow_classes=n_flow_classes,
         device=DEVICE,
         **MODEL_CFG,
     ).to(DEVICE)
@@ -195,6 +198,78 @@ def save_to_html(graph: nx.Graph, original_edges: set, filename: str = "vascular
     print(f"Saved: {filename}")
 
 
+def save_flow_to_html(graph: nx.Graph, original_edges: set, filename: str = "vascular_network_flow.html"):
+    """Render the graph as 3-D lines coloured by flow class with per-edge hover showing actual flow value."""
+    flow_bins  = np.array([0.53, 1.42, 3.93, 10.68, 33.97])
+    flow_labels = ["Q<0.53", "Q<1.42", "Q<3.93", "Q<10.68", "Q<33.97", "Q>33.97"]
+    flow_colors = ["#1f77b4", "#17becf", "#2ca02c", "#bcbd22", "#ff7f0e", "#d62728"]
+
+    print("Compiling 3D flow line graph…")
+    nodes = list(graph.nodes())
+    node_to_idx = {node: i for i, node in enumerate(nodes)}
+    coords = np.array([graph.nodes[node]["node_label"][:3] for node in nodes])
+
+    # Bucket edges by class (-1 = seed)
+    buckets: dict[int, dict] = {-1: {"x": [], "y": [], "z": [], "text": []}}
+    for i in range(len(flow_labels)):
+        buckets[i] = {"x": [], "y": [], "z": [], "text": []}
+
+    for u, v, data in graph.edges(data=True):
+        p0 = coords[node_to_idx[u]]
+        p1 = coords[node_to_idx[v]]
+        is_original = (u, v) in original_edges or (v, u) in original_edges
+
+        if is_original:
+            cls = -1
+            hover = "seed"
+        else:
+            flow_val = float(data.get("flow") or 0.0)
+            cls = int(np.searchsorted(flow_bins, flow_val, side="right"))
+            cls = max(0, min(len(flow_labels) - 1, cls))
+            radius_val = float(data.get("avgRadiusAvg") or 0.0)
+            hover = f"flow: {flow_val:.2f}<br>radius: {radius_val:.2f}<br>class: {flow_labels[cls]}"
+
+        buckets[cls]["x"].extend([p0[0], p1[0], None])
+        buckets[cls]["y"].extend([p0[1], p1[1], None])
+        buckets[cls]["z"].extend([p0[2], p1[2], None])
+        buckets[cls]["text"].extend([hover, hover, ""])
+
+    fig = go.Figure()
+
+    # seed edges
+    b = buckets[-1]
+    if b["x"]:
+        fig.add_trace(go.Scatter3d(
+            x=b["x"], y=b["y"], z=b["z"],
+            mode="lines",
+            line=dict(color="#cccccc", width=2),
+            name="seed graph",
+            hoverinfo="skip",
+            opacity=0.4,
+        ))
+
+    # flow-class edges
+    for cls, (label, color) in enumerate(zip(flow_labels, flow_colors)):
+        b = buckets[cls]
+        if not b["x"]:
+            continue
+        fig.add_trace(go.Scatter3d(
+            x=b["x"], y=b["y"], z=b["z"],
+            mode="lines",
+            line=dict(color=color, width=3),
+            name=label,
+            text=b["text"],
+            hovertemplate="%{text}<extra></extra>",
+        ))
+
+    fig.update_layout(
+        scene=dict(aspectmode="data", bgcolor="white"),
+        title="Vascular Network — grey: seed, colours: AI-generated (by flow class)",
+    )
+    fig.write_html(filename)
+    print(f"Saved: {filename}")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -204,10 +279,11 @@ if __name__ == "__main__":
 
     full_graph, _ = generate_training_graph(OUTPUT_PATH)
 
-    coord_encoder, radius_encoder, max_output_nodes = load_encoders(full_graph, preprocessed_data_dir)
+    coord_encoder, radius_encoder, flow_encoder, max_output_nodes, feature_dim = load_encoders(full_graph, preprocessed_data_dir)
 
     checkpoint_path = find_best_checkpoint("outputs/")
-    model = load_model(checkpoint_path, max_output_nodes, radius_encoder.n_classes)
+    model = load_model(checkpoint_path, max_output_nodes, radius_encoder.n_classes,
+                       flow_encoder.n_classes, feature_dim)
 
     seed_graph, unvisited = get_starting_map(full_graph, depth=GEN_CFG["seed_graph_depth"])
     largest_cc = max(nx.connected_components(seed_graph), key=len)
@@ -223,6 +299,7 @@ if __name__ == "__main__":
         graph_seq_2_seq=model,
         categorical_coordinates_encoder=coord_encoder,
         radius_class_encoder=radius_encoder,
+        flow_class_encoder=flow_encoder,
         unvisited_nodes=unvisited,
         num_iterations=GEN_CFG["num_iterations"],
         max_input_paths=DATA_CFG["max_input_paths"],
@@ -239,6 +316,7 @@ if __name__ == "__main__":
     print(f"New nodes added: {new_nodes}")
 
     save_to_html(generated_graph, original_edges, filename="vascular_network_generated.html")
+    save_flow_to_html(generated_graph, original_edges, filename="vascular_network_flow.html")
     
 
     # --- Radius embedding PCA (3D) ---

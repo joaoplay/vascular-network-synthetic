@@ -1,7 +1,7 @@
 import networkx as nx
 import numpy as np
 import plotly.graph_objects as go
-from sgg.radius_classes import R_EDGES
+from sgg.radius_classes import r_edges
 
 def smooth_graph_coordinates(nx_graph, iterations=3):
     """
@@ -76,12 +76,11 @@ def make_cylinder_mesh(p0, p1, radius, n_sides=8):
     return x, y, z, ii, jj, kk
 
 
-def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius=3):
+def draw_3d_graph(nx_graph, nodes_groups=None, default_radius=3, edges_radius=None, edges_flow=None):
     """
-    Draw a 3D graph using Plotly. Edges are colored and sized based on their avgRadiusAvg attribute.
-    
+    Draw a 3D graph using Plotly. Edges are colored by their avgRadiusLabel attribute.
+
     :param nx_graph: NetworkX graph to visualize
-    :param edges_radius: Optional pre-computed radius list (for backwards compatibility)
     :param nodes_groups: Optional dict of node groups with colors
     :param default_radius: Default radius if not found in edge attributes
     :return: Plotly figure
@@ -132,9 +131,9 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
     ]
     '''
 
-    # Choose 7 distinguishable colors per class (R_EDGES has 6 boundaries => 7 classes)
+    # Choose 7 distinguishable colors per class (r_edges has 6 boundaries => 7 classes)
     color_map = ["#1f77b4", "#17becf", "#2ca02c", "#bcbd22", "#ff7f0e", "#d62728", "#9467bd"]
-    r_edges = np.array(R_EDGES, dtype=float)
+    r_edges = np.array(r_edges, dtype=float)
 
     for edge_idx, edge in enumerate(edge_list):
         # format: [beginning,ending,None]
@@ -236,31 +235,50 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
     """
     coordinates_by_node = {node_id: coord for node_id, coord in zip(nx_graph.nodes(), nodes_pos)}
 
-    group_defs = [
-        {"name": "Raio 1 - 2", "color": "#ff7f0e", "min_r": 0, "max_r": 2},
-        {"name": "Raio 2 - 3", "color": "#2ca02c", "min_r": 2, "max_r": 3},
-        {"name": "Raio 3 - 4", "color": "#d62728", "min_r": 3, "max_r": 4},
-            {"name": "Raio 4 - 5", "color": "#9467bd", "min_r": 4, "max_r": 5},
-            {"name": "Raio 5 - 6", "color": "#8c564b", "min_r": 5, "max_r": 6},
-            {"name": "Raio > 6",   "color": "#e377c2", "min_r": 6, "max_r": 100},
-        ]
+    edge_list = list(nx_graph.edges())
+    edge_index_map = {(u, v): i for i, (u, v) in enumerate(edge_list)}
+
+    all_labels = ['tiny', 'small', 'medium', 'normal', 'large', 'big']
+    label_colors = {
+        'tiny':   "#ff9c07",
+        'small':  "#3cff00",
+        'medium': "#f00f0f",
+        'normal': "#7602fa",
+        'large':  "#9e704a",
+        'big':    "#ff00ea",
+    }
+    label_radii = {
+        'tiny': 1.0, 'small': 2.5, 'medium': 3.5,
+        'normal': 4.5, 'large': 5.5, 'big': 7.0,
+    }
+    r_edges_arr = np.array(r_edges, dtype=float)
+
+    def _edge_label(edge_data):
+        label = edge_data.get('avgRadiusLabel')
+        if label is not None:
+            return label
+        r_val = float(edge_data.get('avgRadiusAvg', default_radius) or default_radius)
+        class_idx = int(np.searchsorted(r_edges_arr, r_val, side='left'))
+        return all_labels[min(class_idx, len(all_labels) - 1)]
 
     trace_edges = []
 
-    for group in group_defs:
+    for label_name, color in label_colors.items():
         all_x, all_y, all_z = [], [], []
         all_i, all_j, all_k = [], [], []
+        all_customdata = []
         offset = 0
         has_edges = False
 
         for u, v, data in nx_graph.edges(data=True):
-            r = data.get('avgRadiusAvg', default_radius)
-            
-            if not (group["min_r"] < r <= group["max_r"]):
+            if _edge_label(data) != label_name:
                 continue
 
+            edge_idx = edge_index_map.get((u, v), edge_index_map.get((v, u)))
             p0 = coordinates_by_node[u]
             p1 = coordinates_by_node[v]
+            r = edges_radius[edge_idx] if (edges_radius is not None and edge_idx is not None) else label_radii[label_name]
+            flow_label = edges_flow[edge_idx] if (edges_flow is not None and edge_idx is not None) else data.get('flow')
 
             result = make_cylinder_mesh(p0, p1, radius=r, n_sides=8)
             if result is None:
@@ -275,7 +293,8 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
             all_i.extend([vert + offset for vert in ci])
             all_j.extend([vert + offset for vert in cj])
             all_k.extend([vert + offset for vert in ck])
-            
+            all_customdata.extend([flow_label] * n_verts)
+
             offset += n_verts
             has_edges = True
 
@@ -283,10 +302,11 @@ def draw_3d_graph(nx_graph, edges_radius=None, nodes_groups=None, default_radius
             mesh = go.Mesh3d(
                 x=all_x, y=all_y, z=all_z,
                 i=all_i, j=all_j, k=all_k,
-                color=group["color"],
-                name=group["name"],
+                color=color,
+                name=label_name,
                 showlegend=True,
-                hoverinfo="skip" 
+                customdata=all_customdata,
+                hovertemplate=f'<b>Vessel</b><br>Radius: {label_name}<br>Flow: %{{customdata}}<extra></extra>',
             )
             trace_edges.append(mesh)
 

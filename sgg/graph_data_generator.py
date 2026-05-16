@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 from sgg.data import generate_training_samples_for_node
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.radius_class_encoder import RadiusClassEncoder   
+from utils.flow_class_encoder import FlowClassEncoder
 from utils.torch import unique
 
 
@@ -67,13 +68,15 @@ class GraphDataGenerator:
 
         radius_class_encoder = RadiusClassEncoder()
 
+        flow_class_encoder = FlowClassEncoder()
+
         # Load training data
         data_x = torch.load(self.data_x_path)
         data_y = torch.load(self.data_y_path)
 
         print(f'Dataset has shape {data_x.shape} and {data_y.shape}')
 
-        return data_x, data_y, categorical_coordinates_encoder, radius_class_encoder
+        return data_x, data_y, categorical_coordinates_encoder, radius_class_encoder, flow_class_encoder
 
     def generate(self):
         """
@@ -136,10 +139,15 @@ class GraphDataGenerator:
         encoded_input_xyz = categorical_coordinates_encoder.transform(input_xyz)
         encoded_prediction_xyz = categorical_coordinates_encoder.transform(prediction_xyz)
 
-        if feature_dim > 3:
-            #generate radius classes and encode radius values
-            radius_class_encoder = RadiusClassEncoder()
+        radius_class_encoder = RadiusClassEncoder()
+        flow_class_encoder = FlowClassEncoder()
 
+        encoded_input_data = torch.empty_like(input_data, dtype=torch.long)
+        encoded_prediction_data = torch.empty_like(prediction_data, dtype=torch.long)
+        encoded_input_data[..., :3] = encoded_input_xyz
+        encoded_prediction_data[..., :3] = encoded_prediction_xyz
+
+        if feature_dim > 3:
             input_radius = input_data[..., 3]
             prediction_radius = prediction_data[..., 3]
 
@@ -149,23 +157,32 @@ class GraphDataGenerator:
             encoded_input_radius = radius_class_encoder.transform(input_radius)
             encoded_prediction_radius = radius_class_encoder.transform(prediction_radius)
 
-
             radius_ignore_index = radius_class_encoder.n_classes
             encoded_input_radius[input_radius_nan_mask] = radius_ignore_index
             encoded_prediction_radius[prediction_radius_nan_mask] = radius_ignore_index
 
+            encoded_input_data[..., 3] = encoded_input_radius.long()
+            encoded_prediction_data[..., 3] = encoded_prediction_radius.long()
 
-            input_data = torch.empty_like(input_data, dtype=torch.long)
-            prediction_data = torch.empty_like(prediction_data, dtype=torch.long)
+        if feature_dim > 4:
+            input_flow = input_data[..., 4].abs()
+            prediction_flow = prediction_data[..., 4].abs()
 
-            input_data[..., :3] = encoded_input_xyz
-            prediction_data[..., :3] = encoded_prediction_xyz
-            input_data[..., 3] = encoded_input_radius.long()
-            prediction_data[..., 3] = encoded_prediction_radius.long()
-        else:
-            radius_class_encoder = RadiusClassEncoder()
-            input_data = encoded_input_xyz.long()
-            prediction_data = encoded_prediction_xyz.long()
+            input_flow_nan_mask = torch.isnan(input_flow)
+            prediction_flow_nan_mask = torch.isnan(prediction_flow)
+
+            encoded_input_flow = flow_class_encoder.transform(input_flow)
+            encoded_prediction_flow = flow_class_encoder.transform(prediction_flow)
+
+            flow_ignore_index = flow_class_encoder.n_classes
+            encoded_input_flow[input_flow_nan_mask] = flow_ignore_index
+            encoded_prediction_flow[prediction_flow_nan_mask] = flow_ignore_index
+
+            encoded_input_data[..., 4] = encoded_input_flow.long()
+            encoded_prediction_data[..., 4] = encoded_prediction_flow.long()
+
+        input_data = encoded_input_data
+        prediction_data = encoded_prediction_data
 
         print(f'Input data min: {input_data.min()}')
         print(f'Input data max: {input_data.max()}')
@@ -197,7 +214,7 @@ class GraphDataGenerator:
         torch.save(prediction_data, self.data_y_path)
         categorical_coordinates_encoder.save_parameters()
 
-        return input_data, prediction_data, categorical_coordinates_encoder, radius_class_encoder
+        return input_data, prediction_data, categorical_coordinates_encoder, radius_class_encoder, flow_class_encoder
 
     @property
     def file_name_prefix(self):
@@ -208,7 +225,7 @@ class GraphDataGenerator:
         """
         return f'{self.max_input_paths}_{self.max_paths_for_each_reachable_node}_' \
                f'{self.max_input_path_length}_{self.max_output_nodes}_{self.num_classes}' \
-               f'_{self.num_iterations}_{self.remove_duplicates}'
+               f'_{self.num_iterations}_{self.remove_duplicates}_flow_v2'
 
     @property
     def data_x_path(self):

@@ -75,6 +75,19 @@ def log_xyz_loss_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
         print(f"XYZ Loss: {trainer.xyz_loss_value}")
         wandb.log({'XYZ Loss': trainer.xyz_loss_value})
 
+def log_flow_loss_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
+    """
+    This callback logs the loss to wandb
+    :param trainer: A GraphSeq2SeqTrainer model
+    :param every_n_iters: How often to log the loss to wandb
+    :return:
+    """
+    if trainer.iter_num % every_n_iters == 0:
+        print(f"Flow Loss: {trainer.flow_loss_value}")
+        wandb.log({'Flow Loss': trainer.flow_loss_value})
+
+
+
 def log_radius_loss_callback(trainer: GraphSeq2SeqTrainer, every_n_iters: int):
     """
     This callback logs the loss to wandb

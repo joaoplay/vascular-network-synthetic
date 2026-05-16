@@ -240,12 +240,12 @@ def generate_training_data_for_graph(graph: nx.Graph, max_input_paths_per_node: 
 
 def get_signed_distance_between_nodes(graph: nx.Graph, from_node_id, to_node_id):
     """
-    Get the signed distance between two nodes as change in x, y, z and the radius of the edge.
-    Returns a numpy array of [dx, dy, dz, radius] if edge has radius, otherwise [dx, dy, dz].
+    Get the signed distance between two nodes as change in x, y, z, the radius and flow of the edge.
+    Returns a numpy array of [dx, dy, dz, radius, flow]
     :param graph:
     :param from_node_id:
     :param to_node_id:
-    :return: numpy array of [dx, dy, dz] or [dx, dy, dz, radius]
+    :return: numpy array of [dx, dy, dz, radius, flow]
     """
     current_node = graph.nodes[from_node_id]
     next_node = graph.nodes[to_node_id]
@@ -257,7 +257,8 @@ def get_signed_distance_between_nodes(graph: nx.Graph, from_node_id, to_node_id)
     
     edge_data = graph.edges[from_node_id, to_node_id]
     radius = edge_data['avgRadiusAvg']
-    return np.append(position_delta, radius)
+    flow = abs(float(edge_data.get('flow')))
+    return np.append(position_delta, [radius, flow])
     
 
 

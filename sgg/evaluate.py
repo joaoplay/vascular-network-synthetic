@@ -12,6 +12,7 @@ from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.embedding import calculate_embedding_representation
 from utils.flow_estimate import annotate_graph_with_flows
 from utils.radius_class_encoder import RadiusClassEncoder
+from utils.flow_class_encoder import FlowClassEncoder
 
 
 def random_subgraph(graph, max_depth):
@@ -121,7 +122,8 @@ def get_starting_map(graph: nx.Graph, depth: int, start_node_id=None):
 
 def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq,
                              categorical_coordinates_encoder: CategoricalCoordinatesEncoder,
-                             radius_class_encoder: RadiusClassEncoder | None,
+                             radius_class_encoder: RadiusClassEncoder,
+                             flow_class_encoder: FlowClassEncoder,
                              unvisited_nodes: list[int], num_iterations: int, max_input_paths: int,
                              max_paths_for_each_reachable_node: int, max_input_path_length: int, max_output_nodes: int,
                              distance_function: callable, max_loop_distance: float, device) -> (nx.Graph, List):
@@ -132,6 +134,7 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
     :param graph_seq_2_seq: A GraphSeq2Seq trained model.
     :param categorical_coordinates_encoder: Fitted categorical coordinates encoder.
     :param radius_class_encoder: Fitted radius class encoder.
+    :param flow_class_encoder: Fitted flow class encoder.
     :param unvisited_nodes: List of unvisited nodes.
     :param num_iterations: Number of iterations to perform.
     :param max_input_paths: Maximum number of input paths to use for each node.
@@ -181,9 +184,15 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
         feature_dim = x.shape[-1]
         x_xyz = categorical_coordinates_encoder.transform(x[..., :3])
         x_radius = radius_class_encoder.transform(x[..., 3])
-        nan_mask = torch.isnan(x[..., 3])
-        x_radius[nan_mask] = radius_class_encoder.n_classes
-        x_encoded = torch.cat([x_xyz, x_radius.unsqueeze(-1)], dim=-1)
+        radius_nan_mask = torch.isnan(x[..., 3])
+        x_radius[radius_nan_mask] = radius_class_encoder.n_classes
+        encoded_parts = [x_xyz, x_radius.unsqueeze(-1)]
+        if feature_dim > 4 and flow_class_encoder is not None:
+            x_flow = flow_class_encoder.transform(x[..., 4])
+            flow_nan_mask = torch.isnan(x[..., 4])
+            x_flow[flow_nan_mask] = flow_class_encoder.n_classes
+            encoded_parts.append(x_flow.unsqueeze(-1))
+        x_encoded = torch.cat(encoded_parts, dim=-1)
         x = x_encoded.unsqueeze(0)
 
 
@@ -203,6 +212,15 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
             predicted_label = radius_class_encoder.inverse_transform(radius_class)
             if isinstance(predicted_label, list):
                 predicted_label = predicted_label[0]
+
+            predicted_flow_value = 0.0
+            predicted_flow_label = None
+            if new_node.numel() > 4 and flow_class_encoder is not None:
+                flow_class = new_node[4].unsqueeze(0)
+                predicted_flow_value = float(flow_class_encoder.class_to_value(flow_class).squeeze(0).item())
+                predicted_flow_label = flow_class_encoder.inverse_transform(flow_class)
+                if isinstance(predicted_flow_label, list):
+                    predicted_flow_label = predicted_flow_label[0]
 
             # Skip zero-displacement predictions — the model may predict zero_class
             # (which decodes to 0.0) as a degenerate output. Don't stop; just skip.
@@ -247,7 +265,9 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                     
                 generated_graph.add_edge(current_node_id, loop_node_id,
                                                  avgRadiusAvg=predicted_radius,
-                                                 avgRadiusLabel=predicted_label)
+                                                 avgRadiusLabel=predicted_label,
+                                                 flow=predicted_flow_value,
+                                                 flowLabel=predicted_flow_label)
 
                 #new_edges_this_iteration.append((current_node_id, loop_node_id))
                 steps += [(current_node_id, loop_node_id, None)]
@@ -264,7 +284,9 @@ def generate_synthetic_graph(seed_graph: nx.Graph, graph_seq_2_seq: GraphSeq2Seq
                 generated_graph.add_node(new_node_id, node_label=new_label)
                 generated_graph.add_edge(current_node_id, new_node_id,
                                          avgRadiusAvg=predicted_radius,
-                                         avgRadiusLabel=predicted_label)
+                                         avgRadiusLabel=predicted_label,
+                                         flow=predicted_flow_value,
+                                         flowLabel=predicted_flow_label)
                 unvisited_nodes.append(new_node_id)
                 steps += [(current_node_id, new_node_id, next_node_coord.tolist())]
 

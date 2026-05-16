@@ -1,7 +1,7 @@
 import numpy as np
 
 # 6 classes for radius 
-R_EDGES = np.array([2, 3, 4, 5, 6], dtype=np.float32)
+r_edges = np.array([2, 3, 4, 5, 6], dtype=np.float32)
 
     # Class 0: r < 2  
     # Class 1: 2 <= r < 3

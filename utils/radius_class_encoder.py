@@ -1,11 +1,11 @@
 import torch
 import numpy as np
-from sgg.radius_classes import R_EDGES
+from sgg.radius_classes import r_edges
 
 
 class RadiusClassEncoder:
     """
-    Encodes continuous radius values into discrete classes using R_EDGES = [2, 3, 4, 5, 6].
+    Encodes continuous radius values into discrete classes using r_edges = [2, 3, 4, 5, 6].
     - Class 0: r < 2
     - Class 1: 2 <= r < 3
     - Class 2: 3 <= r < 4
@@ -15,7 +15,7 @@ class RadiusClassEncoder:
     """
     
     def __init__(self, top_class_max: float = 8.8, bottom_class_min: float = 1.34):
-        self.r_edges = np.array(R_EDGES, dtype=np.float32)
+        self.r_edges = np.array(r_edges, dtype=np.float32)
         self.n_classes = len(self.r_edges) + 1
         self.top_class_max = float(top_class_max)
         self.bottom_class_min = float(bottom_class_min)

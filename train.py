@@ -9,7 +9,7 @@ from torch.utils.data import TensorDataset
 
 from settings import OUTPUT_PATH, CHECKPOINTS_DIR_NAME, PROCESSED_DATA_DIR_NAME, WANDB_PROJECT_NAME, \
     MODELS_DIR_NAME
-from sgg.callbacks import evaluate_callback, save_checkpoint_callback, log_overall_loss_callback,log_radius_loss_callback, log_xyz_loss_callback, save_best_checkpoint_callback
+from sgg.callbacks import evaluate_callback, save_checkpoint_callback, log_overall_loss_callback, log_radius_loss_callback, log_xyz_loss_callback, save_best_checkpoint_callback, log_flow_loss_callback
 from sgg.data import get_signed_distance_between_nodes
 from sgg.evaluate import degree_analysis
 from sgg.graph_data_generator import GraphDataGenerator
@@ -74,13 +74,13 @@ def train_model(cfg: DictConfig):
     # Load or generate data. Apart from the data, the corresponding categorical coordinates encoder is returned.
     # It will be necessary to generate new predictions and evaluate the model.
     if cfg.force_rebuild_data:
-        data_x, data_y, cat_coordinates_encoder, radius_class_encoder = graph_data_generator.generate()
+        data_x, data_y, cat_coordinates_encoder, radius_class_encoder, flow_class_encoder = graph_data_generator.generate()
     else:
         try:
-            data_x, data_y, cat_coordinates_encoder, radius_class_encoder = graph_data_generator.load()
+            data_x, data_y, cat_coordinates_encoder, radius_class_encoder, flow_class_encoder = graph_data_generator.load()
         except FileNotFoundError:
             print('Data not found. Generating new data.')
-            data_x, data_y, cat_coordinates_encoder, radius_class_encoder = graph_data_generator.generate()
+            data_x, data_y, cat_coordinates_encoder, radius_class_encoder, flow_class_encoder = graph_data_generator.generate()
 
     feature_dim = int(data_x.shape[-1])
 
@@ -88,6 +88,7 @@ def train_model(cfg: DictConfig):
     spatial_dims = 3
     xyz_class_weights = compute_class_weights(data_y[..., :spatial_dims], cfg.num_classes)
     n_radius_classes = radius_class_encoder.n_classes
+    n_flow_classes = flow_class_encoder.n_classes
     radius_class_counts = torch.bincount(data_y[..., spatial_dims].reshape(-1).long(),minlength=n_radius_classes,)
     print(f'radius_class_counts: {radius_class_counts.tolist()}')
 
@@ -99,6 +100,9 @@ def train_model(cfg: DictConfig):
             min_weight=cfg.trainer.radius_class_weight_min_weight,
             )
 
+    flow_class_weights = None
+    if feature_dim > spatial_dims + 1:
+        flow_class_weights = compute_class_weights(data_y[..., spatial_dims + 1], n_flow_classes)
 
 
 
@@ -115,7 +119,8 @@ def train_model(cfg: DictConfig):
 
     # Init a new GraphSeq2Seq model
     model = GraphSeq2Seq(n_classes=cfg.num_classes, max_output_nodes=cfg.paths.max_output_nodes,
-                         n_dimensions=feature_dim, n_extra_classes=radius_class_encoder.n_classes,
+                         n_dimensions=feature_dim, n_radius_classes=radius_class_encoder.n_classes,
+                         n_flow_classes=flow_class_encoder.n_classes,
                          device=device, **cfg.model)
 
     # Init a trainer for the GraphSeq2Seq model
@@ -123,11 +128,14 @@ def train_model(cfg: DictConfig):
                                   distance_function=get_signed_distance_between_nodes,
                                   categorical_coordinates_encoder=cat_coordinates_encoder,
                                   radius_class_encoder=radius_class_encoder,
+                                  flow_class_encoder=flow_class_encoder,
                                   xyz_class_weights=xyz_class_weights,
                                   radius_class_weights=radius_class_weights,
+                                  flow_class_weights=flow_class_weights,
                                   ignore_index=cfg.num_classes, **cfg.evaluator,
                                   **cfg.paths, **cfg.trainer,
-                                  radius_ignore_index=radius_class_encoder.n_classes)
+                                  radius_ignore_index=radius_class_encoder.n_classes,
+                                  flow_ignore_index=flow_class_encoder.n_classes if feature_dim > spatial_dims + 1 else None)
     
 
     # Add a set of callbacks to: print the training loss; generate a synthetic graph and perform a comparison
@@ -135,6 +143,7 @@ def train_model(cfg: DictConfig):
     trainer.add_callback(ON_BATCH_END, log_overall_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
     trainer.add_callback(ON_BATCH_END, log_xyz_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
     trainer.add_callback(ON_BATCH_END, log_radius_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
+    trainer.add_callback(ON_BATCH_END, log_flow_loss_callback, every_n_iters=cfg.log_loss_every_n_iters)
     trainer.add_callback(ON_BATCH_END, evaluate_callback, every_n_iters=cfg.eval_every_n_iters, output_dir=hydra_cwd)
     trainer.add_callback(ON_BATCH_END, save_best_checkpoint_callback, checkpoint_save_path=checkpoints_dir)
     trainer.add_callback(ON_TRAIN_END, save_checkpoint_callback, every_n_iters=cfg.save_checkpoint_every_n_iters,

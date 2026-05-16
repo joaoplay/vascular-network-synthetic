@@ -10,6 +10,7 @@ from sgg.evaluate import get_starting_map, generate_synthetic_graph, compute_gra
 from sgg.model import GraphSeq2Seq
 from utils.categorical_coordinates_encoder import CategoricalCoordinatesEncoder
 from utils.radius_class_encoder import RadiusClassEncoder
+from utils.flow_class_encoder import FlowClassEncoder
 from utils.visualize import draw_3d_graph
 
 # Macros for available callbacks
@@ -28,12 +29,14 @@ class GraphSeq2SeqTrainer:
                  lr: float, max_iters: int, batch_size: int, device: str,
                  xyz_class_weights: Optional[torch.Tensor] = None,
                  radius_class_weights: Optional[torch.Tensor] = None,
+                 flow_class_weights: Optional[torch.Tensor] = None,
                  radius_ignore_index: Optional[int] = None,
+                 flow_ignore_index: Optional[int] = None,
                  radius_loss_weight: float = 1.0,
-                 radius_class_weight_power: float = 0.5,
-                 radius_class_weight_max_ratio: float = 5.0,
-                 radius_class_weight_min_weight: float | None = None,
-                 early_stop_patience: Optional[int] = None):
+                 flow_loss_weight: float = 1.0,
+                 flow_class_encoder: Optional[FlowClassEncoder] = None,
+                 early_stop_patience: Optional[int] = None,
+                 **kwargs):
         """
         This class offers a training loop for a Graph Sequence-to-Sequence model. It is responsible for training
         the model, while providing callbacks to perform custom actions during the training process. The metrics
@@ -56,6 +59,7 @@ class GraphSeq2SeqTrainer:
         :param batch_size: The batch size
         :param device: The device to be used for training
         :param radius_ignore_index: The index to be ignored in the radius loss calculation
+        :param flow_ignore_index: The index to be ignored in the flow loss calculation
         """
         self.model: GraphSeq2Seq = model
         self.train_dataset = train_dataset
@@ -71,6 +75,7 @@ class GraphSeq2SeqTrainer:
         self.seed_graph_depth = seed_graph_depth
         self.categorical_coordinates_encoder = categorical_coordinates_encoder
         self.radius_class_encoder = radius_class_encoder
+        self.flow_class_encoder = flow_class_encoder
         self.encoder_optimizer = optim.Adam(self.model.encoder.parameters(), lr=lr)
         self.decoder_optimizer = optim.Adam(self.model.decoder.parameters(), lr=lr)
         self.early_stop_patience = early_stop_patience
@@ -81,13 +86,18 @@ class GraphSeq2SeqTrainer:
         # This allows assigning a dedicated weight to vessel thickness learning.
         xyz_weights = xyz_class_weights.to(device=device) if xyz_class_weights is not None else None
         radius_weights = radius_class_weights.to(device=device) if radius_class_weights is not None else None
+        flow_weights = flow_class_weights.to(device=device) if flow_class_weights is not None else None
 
         print("xyz_class_weights", xyz_weights)
         print("radius_class_weights", radius_weights)
+        print("flow_class_weights", flow_weights)
         self.xyz_loss = nn.CrossEntropyLoss(ignore_index=ignore_index, weight=xyz_weights)
         self.radius_loss = nn.CrossEntropyLoss(ignore_index=radius_ignore_index, weight=radius_weights)
+        self.flow_loss = nn.CrossEntropyLoss(ignore_index=flow_ignore_index, weight=flow_weights) if flow_ignore_index is not None else None
         self.radius_loss_weight = radius_loss_weight
+        self.flow_loss_weight = flow_loss_weight
         print(f"radius_loss_weight: {self.radius_loss_weight}")
+        print(f"flow_loss_weight: {self.flow_loss_weight}")
         self.max_iters = max_iters
         self.device = device
         self.callbacks: Dict = {}
@@ -96,6 +106,7 @@ class GraphSeq2SeqTrainer:
         self.last_loss_value = 0
         self.xyz_loss_value = 0
         self.radius_loss_value = 0
+        self.flow_loss_value = 0
 
     def train(self):
         """
@@ -140,20 +151,26 @@ class GraphSeq2SeqTrainer:
             decoder_output = decoder_output.view(-1, n_dimensions, n_classes)
             y_target = y_selected_paths.reshape(-1, n_dimensions)
 
+            #for xyz
             spatial_dims = 3
             xyz_output = decoder_output[:, :spatial_dims, :].reshape(-1, n_classes)
             xyz_target = y_target[:, :spatial_dims].reshape(-1)
             xyz_loss = self.xyz_loss(xyz_output, xyz_target)
 
-            radius_loss = None
-            if n_dimensions > 3:
-                n_extra_classes = self.model.n_extra_classes
-                radius_output = decoder_output[:, 3, :n_extra_classes]
-                radius_target = y_target[:, 3]
-                radius_loss = self.radius_loss(radius_output, radius_target)
-                self.last_loss_value = xyz_loss + (self.radius_loss_weight * radius_loss)
-            else:
-                self.last_loss_value = xyz_loss
+            #for radius
+            n_radius_classes = self.model.n_radius_classes
+            radius_output = decoder_output[:, 3, :n_radius_classes]
+            radius_target = y_target[:, 3]
+            radius_loss = self.radius_loss(radius_output, radius_target)
+
+            flow_loss = None
+            self.last_loss_value = xyz_loss + (self.radius_loss_weight * radius_loss)
+            if n_dimensions > 4 and self.flow_loss is not None:
+                n_flow_classes = self.model.n_flow_classes
+                flow_output = decoder_output[:, 4, :n_flow_classes]
+                flow_target = y_target[:, 4]
+                flow_loss = self.flow_loss(flow_output, flow_target)
+                self.last_loss_value = self.last_loss_value + (self.flow_loss_weight * flow_loss)
 
             self.encoder_optimizer.zero_grad()
             self.decoder_optimizer.zero_grad()
@@ -166,7 +183,8 @@ class GraphSeq2SeqTrainer:
             # Convert to scalar to free computation graph
             self.last_loss_value = self.last_loss_value.item()
             self.xyz_loss_value = xyz_loss.item()
-            self.radius_loss_value = radius_loss.item() if radius_loss is not None else 0.0
+            self.radius_loss_value = radius_loss.item()
+            self.flow_loss_value = flow_loss.item() if flow_loss is not None else 0.0
 
             # Early stopping check
             if self.early_stop_patience is not None:
@@ -211,6 +229,7 @@ class GraphSeq2SeqTrainer:
                                                       graph_seq_2_seq=self.model,
                                                       categorical_coordinates_encoder=self.categorical_coordinates_encoder,
                                                       radius_class_encoder=self.radius_class_encoder,
+                                                      flow_class_encoder=self.flow_class_encoder,
                                                       max_input_paths=self.max_input_paths,
                                                       max_paths_for_each_reachable_node=self.max_paths_for_each_reachable_node,
                                                       max_input_path_length=self.max_input_path_length,
@@ -219,25 +238,21 @@ class GraphSeq2SeqTrainer:
                                                       num_iterations=self.synthetic_graph_gen_iterations,
                                                       max_loop_distance=self.max_loop_distance, device=self.device)
 
+
         synth_graph = nx.convert_node_labels_to_integers(synth_graph, label_attribute='old_label')
-        synth_edges_radius = [
-            float(synth_graph.edges[edge].get('avgRadiusAvg'))
-            for edge in synth_graph.edges()
-        ]
-        fig1 = draw_3d_graph(synth_graph, edges_radius=synth_edges_radius)
+        fig1 = draw_3d_graph(synth_graph)
 
         seed_graph = nx.convert_node_labels_to_integers(seed_graph, label_attribute='old_label')
-        seed_edges_radius = [
-            float(seed_graph.edges[edge].get('avgRadiusAvg'))
-            for edge in seed_graph.edges()
-        ]
-        fig2 = draw_3d_graph(seed_graph, edges_radius=seed_edges_radius)
+        fig2 = draw_3d_graph(seed_graph)
+
 
         # Calculate metrics
         metrics = compute_graph_comparison_metrics(synth_graph, self.graph)
         metrics['plots']['synthetic_graph'] = fig1
         metrics['plots']['seed_graph'] = fig2
         
+
+
         return metrics, steps
 
     def add_callback(self, on_event: str, callback: Callable, *args, **kwargs):
@@ -293,3 +308,4 @@ class GraphSeq2SeqTrainer:
         self.decoder_optimizer.load_state_dict(checkpoint['decoder_optimizer'])
         self.iter_num = checkpoint['iter_num']
         self.last_loss_value = checkpoint['loss']
+

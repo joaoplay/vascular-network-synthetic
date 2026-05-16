@@ -19,7 +19,7 @@ def generate_training_graph(dataset_output_path: str, voxel_dim: list = (1000.0,
     :param voxel_index: If provided, select this specific voxel index instead of the most populated one
     :return:
     """
-    dataset = VesselGraphDataset(root=f'{dataset_output_path}/data', name='synthetic_graph_1', use_edge_attr=True,
+    dataset = VesselGraphDataset(root=f'{dataset_output_path}/data', name='synthetic_graph_1_pressoes_fluxos', use_edge_attr=True,
                                  use_atlas=False)
     data = dataset[0].clone()
     data_undirected = Data(x=data.x, edge_index=data.edge_index_undirected, edge_attr=data.edge_attr_undirected)
@@ -77,8 +77,10 @@ def generate_training_graph(dataset_output_path: str, voxel_dim: list = (1000.0,
         u = int(edge_index[0, i])
         v = int(edge_index[1, i])
         r = float(edge_attr[i, 2]) #radius is the 3rd attribute in edge_attr 
+        f = float(edge_attr[i, 5]) #flow is the 6th attribute in edge_attr
         if nx_graph.has_edge(u, v):
             nx_graph[u][v]["avgRadiusAvg"] = r
+            nx_graph[u][v]["flow"] = abs(f)
     return nx_graph, largest_component_data
 
 
