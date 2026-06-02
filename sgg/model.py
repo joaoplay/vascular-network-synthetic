@@ -92,7 +92,7 @@ class GraphDecoderRNN(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.is_bidirectional = is_bidirectional
+        self.is_bidirectional = False #false just to test some things 
         self.n_dimensions = n_dimensions
         self.spatial_dims = 3
         self.n_radius_classes = n_radius_classes
@@ -158,8 +158,12 @@ class GraphDecoderRNN(nn.Module):
         :param batch_size: The batch size
         :return:
         """
-        return Variable(torch.zeros(self.num_layers * (2 if self.is_bidirectional else 1), batch_size,
+        #return Variable(torch.zeros(self.num_layers * (2 if self.is_bidirectional else 1), batch_size,
+                                    #self.hidden_size))
+
+        return Variable(torch.zeros(self.num_layers, batch_size,
                                     self.hidden_size))
+
 
 
 class GraphSeq2Seq(nn.Module):
@@ -213,6 +217,8 @@ class GraphSeq2Seq(nn.Module):
                                        spatial_embedding=self.spatial_embedding,
                                        radius_embedding=self.radius_embedding,
                                        flow_embedding=self.flow_embedding).to(device)
+        
+        self.encoder_to_decoder = nn.Linear(hidden_size*2,hidden_size).to(device)
 
         #layernorm to normalize aggregated hidden states per-layer across hidden_size
         #self.hidden_layer_norm = nn.LayerNorm(hidden_size).to(device)
@@ -257,11 +263,15 @@ class GraphSeq2Seq(nn.Module):
 
             out, encoder_hidden = self.encoder(sample, encoder_hidden)
             #aggregate hidden 
-            aggregated = torch.sum(encoder_hidden, dim=1)
+            aggregated = torch.mean(encoder_hidden, dim=1)
             batch_encoder_hidden[:, batch_sample_idx, :] = aggregated
-
         # Aggregate context
-        decoder_hidden = batch_encoder_hidden.contiguous().to(device=self.device)
+        #decoder_hidden = batch_encoder_hidden.contiguous().to(device=self.device)
+
+        #projection because decoder is not bidirectional anymore
+        temp1 = batch_encoder_hidden.view(self.num_layers, 2, batch_size, self.hidden_size)
+        temp1 = torch.cat([temp1[:, 0], temp1[:, 1]], dim=-1)
+        decoder_hidden = self.encoder_to_decoder(temp1).contiguous().to(device=self.device)
         self.encoder.encoder.flatten_parameters()
         self.decoder.decoder.flatten_parameters()
 

@@ -166,3 +166,6 @@ configs/default_config.yaml
 configs/default_config.yaml
 configs/trainer/trainer_1.yaml
 vascular_network/dataset_generation.py
+vascular-network-synthetic.zip
+vascular_network_flow.html
+sgg/model.py

@@ -2,6 +2,7 @@ import networkx as nx
 import numpy as np
 import plotly.graph_objects as go
 from sgg.radius_classes import r_edges
+from sgg.flow_classes import flow_edges as f_edges
 
 def smooth_graph_coordinates(nx_graph, iterations=3):
     """
@@ -278,7 +279,15 @@ def draw_3d_graph(nx_graph, nodes_groups=None, default_radius=3, edges_radius=No
             p0 = coordinates_by_node[u]
             p1 = coordinates_by_node[v]
             r = edges_radius[edge_idx] if (edges_radius is not None and edge_idx is not None) else label_radii[label_name]
-            flow_label = edges_flow[edge_idx] if (edges_flow is not None and edge_idx is not None) else data.get('flow')
+            flow_raw = edges_flow[edge_idx] if (edges_flow is not None and edge_idx is not None) else data.get('flow')
+            flow_labels_list = ['very low', 'low', 'medium', 'high', 'very high', 'extreme']
+            f_edges_arr = np.array(f_edges, dtype=float)
+            if flow_raw is not None:
+                flow_class_idx = int(np.searchsorted(f_edges_arr, abs(float(flow_raw)), side='left'))
+                flow_class_idx = max(0, min(len(flow_labels_list) - 1, flow_class_idx))
+                flow_label = flow_labels_list[flow_class_idx]
+            else:
+                flow_label = 'unknown'
 
             result = make_cylinder_mesh(p0, p1, radius=r, n_sides=8)
             if result is None:
